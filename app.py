@@ -18,7 +18,7 @@ from streamlit_agraph import Config, Edge, Node, agraph
 
 try:
     from streamlit.errors import StreamlitAPIException
-except Exception:  # pragma: no cover - compatibility fallback for older Streamlit versions.
+except ImportError:  # pragma: no cover - compatibility fallback for older Streamlit versions.
     class StreamlitAPIException(Exception):
         """Fallback Streamlit exception type for runtimes lacking streamlit.errors."""
 
@@ -252,11 +252,7 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         normalized[column] = normalized[column].apply(
             lambda value: "" if pd.isna(value) else str(value).strip()
         )
-    normalized["Parent"] = normalized["Parent"].apply(
-        lambda value: ""
-        if str(value).strip().lower() in NULL_LIKE_TEXT_VALUES
-        else str(value).strip()
-    )
+    normalized["Parent"] = normalize_nullable_text_series(normalized["Parent"])
 
     if ROOT_MEMBER_NAME in normalized["Name"].values:
         normalized.loc[normalized["Name"] == ROOT_MEMBER_NAME, "Parent"] = ""
@@ -850,11 +846,6 @@ def render_editor_tab(df: pd.DataFrame) -> None:
             save_df["Generation"] = normalize_nullable_text_series(save_df["Generation"])
             save_df["Parent"] = normalize_nullable_text_series(save_df["Parent"])
             save_df["Generation"] = save_df["Generation"].apply(normalize_generation)
-            save_df["Parent"] = save_df["Parent"].apply(
-                lambda value: ""
-                if str(value).strip().lower() in NULL_LIKE_TEXT_VALUES
-                else str(value).strip()
-            )
             save_data(save_df)
             st.success("Saved updates to family_data.csv.")
             st.rerun()
