@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import html
+import inspect
 import os
 import re
 from datetime import date
@@ -409,6 +410,13 @@ def safe_text(value: Any, default: str = "") -> str:
     return text if text else default
 
 
+def supports_kwarg(function: Any, kwarg_name: str) -> bool:
+    try:
+        return kwarg_name in inspect.signature(function).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[str, str]]:
     nodes: list[Node] = []
     edges: list[Edge] = []
@@ -734,24 +742,28 @@ def render_editor_tab(df: pd.DataFrame) -> None:
             # Streamlit compatibility: older versions don't support "format".
             return st.column_config.DateColumn(label)
 
-    editor_df = st.data_editor(
-        df,
-        column_config={
-            "Generation": text_column("Generation", required=True),
-            "Branch": text_column("Branch"),
-            "Birthdate": date_column("Birthdate"),
-            "Name": text_column("Name", required=True),
-            "Parent": text_column("Parent"),
-        },
-        num_rows="dynamic",
-        hide_index=True,
-        use_container_width=True,
-        key="family_editor",
-    )
+    column_config = {
+        "Generation": text_column("Generation", required=True),
+        "Branch": text_column("Branch"),
+        "Birthdate": date_column("Birthdate"),
+        "Name": text_column("Name", required=True),
+        "Parent": text_column("Parent"),
+    }
+    editor_kwargs: dict[str, Any] = {
+        "column_config": column_config,
+        "hide_index": True,
+        "key": "family_editor",
+    }
+    if supports_kwarg(st.data_editor, "num_rows"):
+        editor_kwargs["num_rows"] = "dynamic"
+    if supports_kwarg(st.data_editor, "use_container_width"):
+        editor_kwargs["use_container_width"] = True
+    editor_df = st.data_editor(df, **editor_kwargs)
 
     save_col, reset_col = st.columns([1, 5])
     with save_col:
-        if st.button("💾 Save changes", type="primary"):
+        save_button_kwargs = {"type": "primary"} if supports_kwarg(st.button, "type") else {}
+        if st.button("💾 Save changes", **save_button_kwargs):
             save_data(editor_df)
             st.success("Saved updates to family_data.csv.")
             st.rerun()
