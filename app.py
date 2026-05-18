@@ -31,6 +31,8 @@ BRANCH_PALETTE = [
     "#0891b2",
     "#65a30d",
 ]
+AVATAR_PALETTE = ["#1d4ed8", "#7c3aed", "#be123c", "#0891b2", "#15803d", "#b45309"]
+ROOT_MEMBER_NAME = "Walter Künz"
 
 st.set_page_config(
     page_title="Family Tree",
@@ -47,25 +49,25 @@ st.markdown(
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
         background: #f3f4f6;
-        color: #111827;
+        color: #000000;
     }
     .stApp {
         background: linear-gradient(180deg, #f9fafb 0%, #eef2f7 100%);
-        color: #111827;
+        color: #000000;
     }
     .main .block-container {
         padding-top: 1.5rem;
         padding-bottom: 2rem;
     }
     section[data-testid="stSidebar"] {
-        background: #ffffff !important;
+        background: #f0f2f6 !important;
         border-right: 1px solid #d1d5db;
     }
     section[data-testid="stSidebar"] * {
-        color: #111827 !important;
+        color: #000000 !important;
     }
     [data-testid="stSidebarNav"] {
-        background: #ffffff !important;
+        background: #f0f2f6 !important;
     }
     .hero-card,
     .tree-panel,
@@ -102,7 +104,7 @@ st.markdown(
     }
     .profile-name {
         margin: 0;
-        color: #111827;
+        color: #000000;
         font-size: 1.9rem;
         font-weight: 800;
     }
@@ -133,7 +135,7 @@ st.markdown(
         margin-bottom: 0.2rem;
     }
     .profile-detail-value {
-        color: #111827;
+        color: #000000;
         font-size: 1rem;
         font-weight: 700;
     }
@@ -142,7 +144,7 @@ st.markdown(
         padding: 0.55rem 0.9rem;
         text-align: center;
         font-weight: 700;
-        color: #111827;
+        color: #000000;
     }
     .legend-swatch {
         width: 10px;
@@ -164,13 +166,13 @@ st.markdown(
     .stTabs [data-baseweb="tab"] {
         background: #ffffff;
         border-radius: 999px;
-        color: #111827;
+        color: #000000;
         border: 1px solid #d1d5db;
         padding: 0.4rem 1rem;
     }
     .stTabs [aria-selected="true"] {
-        background: #111827 !important;
-        color: #ffffff !important;
+        background: #dbeafe !important;
+        color: #000000 !important;
     }
     </style>
     """,
@@ -198,11 +200,12 @@ def normalize_generation(value) -> str:
     return text
 
 
-def generation_sort_key(value: str) -> tuple[int, str]:
-    match = re.search(r"(\d+)", value or "")
-    if match:
-        return int(match.group(1)), value
-    return 999, value
+def generation_sort_key(value: Any) -> int:
+    return (
+        int(re.search(r"(\d+)", str(value)).group(1))
+        if re.search(r"(\d+)", str(value))
+        else 0
+    )
 
 
 def hierarchy_sort_key(name: str, parents: dict[str, str]) -> tuple[int, str]:
@@ -219,6 +222,15 @@ def hierarchy_sort_key(name: str, parents: dict[str, str]) -> tuple[int, str]:
 def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     normalized = df.copy()
     normalized = normalized.rename(columns={"Partent": "Parent"})
+    if "Birthdate" not in normalized.columns and "Geburtsdatum" in normalized.columns:
+        normalized = normalized.rename(columns={"Geburtsdatum": "Birthdate"})
+    elif "Birthdate" in normalized.columns and "Geburtsdatum" in normalized.columns:
+        birthdate_empty = normalized["Birthdate"].isna() | (
+            normalized["Birthdate"].astype(str).str.strip() == ""
+        )
+        normalized.loc[birthdate_empty, "Birthdate"] = normalized.loc[
+            birthdate_empty, "Geburtsdatum"
+        ]
 
     for column in REQUIRED_COLUMNS:
         if column not in normalized.columns:
@@ -232,6 +244,13 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         normalized[column] = normalized[column].apply(
             lambda value: "" if pd.isna(value) else str(value).strip()
         )
+
+    if ROOT_MEMBER_NAME in normalized["Name"].values:
+        normalized.loc[normalized["Name"] == ROOT_MEMBER_NAME, "Parent"] = ""
+        rootless_mask = (
+            (normalized["Parent"] == "") & (normalized["Name"] != ROOT_MEMBER_NAME)
+        )
+        normalized.loc[rootless_mask, "Parent"] = ROOT_MEMBER_NAME
 
     normalized = normalized[normalized["Name"] != ""].drop_duplicates("Name", keep="last")
     parents = dict(zip(normalized["Name"], normalized["Parent"]))
@@ -327,11 +346,12 @@ def image_file_to_data_uri(path: Path) -> str:
 
 def fallback_avatar_data_uri(name: str) -> str:
     initials = html.escape(build_initials(name))
+    color = AVATAR_PALETTE[sum(ord(char) for char in name) % len(AVATAR_PALETTE)]
     svg = f"""
     <svg xmlns="http://www.w3.org/2000/svg" width="280" height="280" viewBox="0 0 280 280">
-      <circle cx="140" cy="140" r="134" fill="#d1d5db" stroke="#9ca3af" stroke-width="4" />
+      <circle cx="140" cy="140" r="134" fill="{color}" stroke="#000000" stroke-width="4" />
       <text x="50%" y="53%" dominant-baseline="middle" text-anchor="middle"
-            font-family="Inter, Arial, sans-serif" font-size="92" font-weight="800" fill="#374151">
+            font-family="Inter, Arial, sans-serif" font-size="92" font-weight="800" fill="#ffffff">
         {initials}
       </text>
     </svg>
@@ -448,13 +468,13 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[
                     "border": branch_colors.get(branch, "#475569"),
                     "highlight": {
                         "background": "#ffffff",
-                        "border": "#111827",
+                        "border": "#000000",
                     },
                 },
                 font={
-                    "color": "#111827",
+                    "color": "#000000",
                     "face": "Inter",
-                    "size": 19,
+                    "size": 20,
                     "multi": "html",
                 },
                 margin={"top": 10, "right": 10, "bottom": 14, "left": 10},
@@ -774,6 +794,7 @@ def render_editor_tab(df: pd.DataFrame) -> None:
 
 def main() -> None:
     df = load_data()
+    df = df.dropna(subset=["Name", "Generation"])
     ensure_selected_member(df)
     render_sidebar(df)
 
