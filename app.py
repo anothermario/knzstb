@@ -201,11 +201,9 @@ def normalize_generation(value) -> str:
 
 
 def generation_sort_key(value: Any) -> int:
-    return (
-        int(re.search(r"(\d+)", str(value)).group(1))
-        if re.search(r"(\d+)", str(value))
-        else 0
-    )
+    """Return numeric generation, defaulting to 0 when no digits are present."""
+    match = re.search(r"(\d+)", str(value))
+    return int(match.group(1)) if match else 0
 
 
 def hierarchy_sort_key(name: str, parents: dict[str, str]) -> tuple[int, str]:
