@@ -16,11 +16,7 @@ from streamlit_agraph import Config, Edge, Node, agraph
 CSV_PATH = Path(__file__).with_name("family_tree.csv")
 PROFILES_DIR = Path(__file__).parent / "assets" / "profiles"
 PLACEHOLDER_IMG = PROFILES_DIR / "placeholder.png"
-DEFAULT_DATA_URL = os.getenv(
-    "FAMILY_TREE_DATA_URL",
-    "https://docs.google.com/spreadsheets/d/"
-    "10jJ9WtKPP6onZhnHN6AK5WSgLbKirzD2qODFOPDvgu4/edit?usp=sharing",
-)
+DEFAULT_DATA_URL = os.getenv("FAMILY_TREE_DATA_URL", "").strip()
 REQUIRED_COLUMNS = ["Generation", "Branch", "Name", "Birthdate", "Parent"]
 BRANCH_COLORS = {
     "Root": "#ff6b6b",
@@ -124,6 +120,8 @@ def read_remote_data(url: str) -> pd.DataFrame:
 def bootstrap_local_data() -> None:
     if CSV_PATH.exists() and CSV_PATH.stat().st_size > 0:
         return
+    if not DEFAULT_DATA_URL:
+        return
     try:
         df = read_remote_data(DEFAULT_DATA_URL)
     except (URLError, OSError, ValueError, pd.errors.ParserError):
@@ -136,6 +134,8 @@ def load_data() -> pd.DataFrame:
     bootstrap_local_data()
     if CSV_PATH.exists():
         return normalize_dataframe(pd.read_csv(CSV_PATH))
+    if not DEFAULT_DATA_URL:
+        return normalize_dataframe(pd.DataFrame(columns=REQUIRED_COLUMNS))
     return read_remote_data(DEFAULT_DATA_URL)
 
 
@@ -300,7 +300,10 @@ def render_sidebar(df: pd.DataFrame) -> None:
 
         st.markdown("---")
         st.markdown("### 🔄 Data source")
-        st.caption("Local edits save to `family_tree.csv`. You can also refresh from the provided Google Sheet in the editor tab.")
+        st.caption(
+            "Local edits save to `family_tree.csv`. You can also refresh from the "
+            "Google Sheet configured in `FAMILY_TREE_DATA_URL`."
+        )
 
 
 def render_tree_tab(df: pd.DataFrame) -> None:
@@ -390,6 +393,9 @@ def render_stats_tab(df: pd.DataFrame) -> None:
 
 
 def refresh_from_sheet() -> None:
+    if not DEFAULT_DATA_URL:
+        st.warning("Set `FAMILY_TREE_DATA_URL` to enable Google Sheet refresh.")
+        return
     try:
         remote_df = read_remote_data(DEFAULT_DATA_URL)
     except URLError:
@@ -422,8 +428,8 @@ def render_editor_tab(df: pd.DataFrame) -> None:
             refresh_from_sheet()
     with info_col:
         st.caption(
-            "Uses the provided spreadsheet as a reset source, then writes the result to "
-            "`family_tree.csv` for local editing."
+            "Uses the Google Sheet from `FAMILY_TREE_DATA_URL` as a reset source, "
+            "then writes the result to `family_tree.csv` for local editing."
         )
 
     editor_df = st.data_editor(

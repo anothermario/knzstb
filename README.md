@@ -47,7 +47,7 @@ Requires Python 3.9+.
 
 ### 2 — Add your data
 
-Edit `family_tree.csv` (or use the in-app editor). The app also includes a reset button for the provided Google Sheet.  
+Edit `family_tree.csv` (or use the in-app editor).  
 The required columns are:
 
 | Column | Description |
@@ -58,7 +58,17 @@ The required columns are:
 | `Birthdate` | `YYYY-MM-DD` format |
 | `Parent` | Name of the direct parent (leave blank for root nodes) |
 
-### 3 — Add profile photos *(optional)*
+### 3 — Optional: connect a Google Sheet reset source
+
+If you want the **Reload from Google Sheet** button to work, set:
+
+```bash
+export FAMILY_TREE_DATA_URL="https://docs.google.com/spreadsheets/d/.../edit?usp=sharing"
+```
+
+The app will convert the edit URL to CSV export format automatically.
+
+### 4 — Add profile photos *(optional)*
 
 Drop JPEG/PNG files into `assets/profiles/` named exactly after the person:
 
@@ -69,7 +79,7 @@ assets/profiles/Anna.png
 
 Any member without a photo will display the placeholder avatar automatically.
 
-### 4 — Run the app
+### 5 — Run the app
 
 ```bash
 streamlit run app.py
@@ -86,7 +96,7 @@ Open your browser at **http://localhost:8501**
 3. **Click profiles** — select a node in the tree to review the current profile card.
 4. **Customise branches** — update the `BRANCH_COLORS` dict in `app.py` to match your family branches.
 5. **Save & reload** — click *Save Changes* in the editor; Streamlit hot-reloads automatically.
-6. **Reset if needed** — use *Reload from Google Sheet* to re-initialize the local CSV from the provided sheet.
+6. **Reset if needed** — use *Reload from Google Sheet* to re-initialize the local CSV from `FAMILY_TREE_DATA_URL`.
 7. **Log changes** — commit your edits with a descriptive message so nothing is forgotten.
 
 ---
