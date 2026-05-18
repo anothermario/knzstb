@@ -19,6 +19,7 @@ CSV_PATH = Path(__file__).with_name("family_data.csv")
 LEGACY_CSV_PATH = Path(__file__).with_name("family_tree.csv")
 PROFILES_DIR = Path(__file__).parent / "assets" / "profiles"
 DEFAULT_DATA_URL = os.getenv("FAMILY_TREE_DATA_URL", "").strip()
+APP_TITLE = os.getenv("FAMILY_TREE_TITLE", "Family Tree").strip() or "Family Tree"
 REQUIRED_COLUMNS = ["Generation", "Branch", "Birthdate", "Name", "Parent"]
 BRANCH_PALETTE = [
     "#0f766e",
@@ -357,9 +358,7 @@ def get_ancestors(df: pd.DataFrame, names: Iterable[str]) -> set[str]:
     collected = set(names)
     for name in list(names):
         parent = parents.get(name, "")
-        while parent and parent != name:
-            if parent in collected:
-                break
+        while parent and parent != name and parent not in collected:
             collected.add(parent)
             parent = parents.get(parent, "")
     return collected
@@ -367,13 +366,14 @@ def get_ancestors(df: pd.DataFrame, names: Iterable[str]) -> set[str]:
 
 def build_hierarchy_levels(df: pd.DataFrame) -> dict[str, int]:
     parents = dict(zip(df["Name"], df["Parent"]))
+    known_names = set(parents)
     levels: dict[str, int] = {}
 
     def resolve(name: str, trail: set[str]) -> int:
         if name in levels:
             return levels[name]
         parent = parents.get(name, "")
-        if not parent or parent == name or parent in trail or parent not in parents:
+        if not parent or parent == name or parent in trail or parent not in known_names:
             levels[name] = 1
             return 1
         levels[name] = resolve(parent, trail | {name}) + 1
@@ -725,12 +725,12 @@ def main() -> None:
     render_sidebar(df)
 
     st.markdown(
-        """
+        f"""
         <div class="hero-card">
           <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
             <span style="font-size:2.8rem;">🌳</span>
             <div>
-              <h1 style="margin:0;font-size:2.3rem;font-weight:800;color:#111827;">Künz Family Tree</h1>
+              <h1 style="margin:0;font-size:2.3rem;font-weight:800;color:#111827;">{html.escape(APP_TITLE)}</h1>
               <p style="margin:0.35rem 0 0 0;color:#4b5563;font-size:1rem;">
                 High-contrast, data-driven family profiles built directly from <strong>family_data.csv</strong>.
               </p>
