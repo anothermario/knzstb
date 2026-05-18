@@ -293,7 +293,10 @@ def render_sidebar(df: pd.DataFrame) -> None:
 
         st.markdown("---")
         st.markdown("### 📁 Photos")
-        st.caption(f"Store portraits in `{PROFILES_DIR.as_posix()}` as `[Name].jpg`.")
+        st.caption(
+            f"Store portraits in `{PROFILES_DIR.as_posix()}` as `[Name].jpg`, "
+            "`[Name].jpeg`, or `[Name].png`."
+        )
 
         st.markdown("---")
         st.markdown("### 🔄 Data source")
@@ -390,7 +393,10 @@ def refresh_from_sheet() -> None:
     try:
         remote_df = read_remote_data(DEFAULT_DATA_URL)
     except URLError:
-        st.error("Could not reach the Google Sheet. Check network access and try again.")
+        st.error(
+            f"Could not reach the Google Sheet at {DEFAULT_DATA_URL}. "
+            "Check network access and try again."
+        )
         return
     except pd.errors.ParserError:
         st.error("The Google Sheet data could not be parsed as CSV.")
