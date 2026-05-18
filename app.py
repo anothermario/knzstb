@@ -169,7 +169,7 @@ def get_profile_image(name: str):
     return None
 
 
-def ancestors_for(df: pd.DataFrame, names: Iterable[str]) -> set[str]:
+def get_ancestors(df: pd.DataFrame, names: Iterable[str]) -> set[str]:
     parents = dict(zip(df["Name"], df["Parent"]))
     collected = set(names)
     for name in list(names):
@@ -230,7 +230,7 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config]:
     return nodes, edges, config
 
 
-def ensure_selected_member(df: pd.DataFrame) -> str:
+def ensure_selected_member(df: pd.DataFrame) -> str | None:
     names = df["Name"].tolist()
     selected = st.session_state.get("selected_member")
     if selected not in names:
@@ -308,7 +308,7 @@ def render_tree_tab(df: pd.DataFrame) -> None:
     filtered = df.copy()
     if branch_filter != "All":
         names = filtered.loc[filtered["Branch"] == branch_filter, "Name"].tolist()
-        filtered = filtered[filtered["Name"].isin(ancestors_for(df, names))]
+        filtered = filtered[filtered["Name"].isin(get_ancestors(df, names))]
     if generation_filter:
         filtered = filtered[filtered["Generation"].isin(generation_filter)]
 
@@ -375,8 +375,11 @@ def render_stats_tab(df: pd.DataFrame) -> None:
 def refresh_from_sheet() -> None:
     try:
         remote_df = read_remote_data(DEFAULT_DATA_URL)
-    except (URLError, OSError, ValueError, pd.errors.ParserError) as exc:
-        st.error(f"Could not refresh from the Google Sheet: {exc}")
+    except (URLError, OSError, ValueError, pd.errors.ParserError):
+        st.error(
+            "Could not refresh from the Google Sheet. Check the URL or network access "
+            "and try again."
+        )
         return
     save_data(remote_df)
     st.success("Reloaded local data from the provided Google Sheet.")
