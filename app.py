@@ -32,7 +32,7 @@ BRANCH_PALETTE = [
     "#65a30d",
 ]
 AVATAR_PALETTE = ["#1d4ed8", "#7c3aed", "#be123c", "#0891b2", "#15803d", "#b45309"]
-ROOT_MEMBER_NAME = "Walter Künz"
+ROOT_MEMBER_NAME = "Hans Künz"
 
 st.set_page_config(
     page_title="Family Tree",
@@ -235,7 +235,6 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             normalized[column] = ""
 
     normalized = normalized[REQUIRED_COLUMNS]
-    parent_was_missing = normalized["Parent"].isna()
     normalized["Generation"] = normalized["Generation"].apply(normalize_generation)
     normalized["Birthdate"] = pd.to_datetime(normalized["Birthdate"], errors="coerce")
 
@@ -246,12 +245,10 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     if ROOT_MEMBER_NAME in normalized["Name"].values:
         normalized.loc[normalized["Name"] == ROOT_MEMBER_NAME, "Parent"] = ""
-        rootless_mask = (
-            parent_was_missing
-            & (normalized["Parent"] == "")
-            & (normalized["Name"] != ROOT_MEMBER_NAME)
+        g2_mask = (normalized["Generation"] == "G2") & (
+            normalized["Name"] != ROOT_MEMBER_NAME
         )
-        normalized.loc[rootless_mask, "Parent"] = ROOT_MEMBER_NAME
+        normalized.loc[g2_mask, "Parent"] = ROOT_MEMBER_NAME
 
     normalized = normalized[normalized["Name"] != ""].drop_duplicates("Name", keep="last")
     parents = dict(zip(normalized["Name"], normalized["Parent"]))
