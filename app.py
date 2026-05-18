@@ -20,6 +20,8 @@ try:
     from streamlit.errors import StreamlitAPIException
 except Exception:  # pragma: no cover - compatibility fallback for older Streamlit versions.
     class StreamlitAPIException(Exception):
+        """Fallback Streamlit exception type for runtimes lacking streamlit.errors."""
+
         pass
 
 CSV_PATH = Path(__file__).with_name("family_data.csv")
@@ -39,6 +41,8 @@ BRANCH_PALETTE = [
 ]
 AVATAR_PALETTE = ["#1d4ed8", "#7c3aed", "#be123c", "#0891b2", "#15803d", "#b45309"]
 ROOT_MEMBER_NAME = "Hans Künz"
+NULL_LIKE_TEXT_VALUES = {"", "none", "nan", "nat", "null"}
+EDITOR_FOOTER_MARKER = "Aktuelles Datum"
 
 st.set_page_config(
     page_title="Family Tree",
@@ -250,7 +254,7 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         )
     normalized["Parent"] = normalized["Parent"].apply(
         lambda value: ""
-        if str(value).strip().lower() in {"", "none", "nan", "nat", "null"}
+        if str(value).strip().lower() in NULL_LIKE_TEXT_VALUES
         else str(value).strip()
     )
 
@@ -749,7 +753,7 @@ def normalize_nullable_text_series(series: pd.Series) -> pd.Series:
         .str.strip()
         .apply(
             lambda value: ""
-            if value.lower() in {"", "none", "nan", "nat", "null"}
+            if value.lower() in NULL_LIKE_TEXT_VALUES
             else value
         )
     )
@@ -759,7 +763,7 @@ def sanitize_editor_rows(df: pd.DataFrame) -> pd.DataFrame:
     cleaned = df.copy()
     footer_mask = (
         cleaned.apply(
-            lambda row: row.astype(str).str.contains("Aktuelles Datum", case=False, na=False).any(),
+            lambda row: row.astype(str).str.contains(EDITOR_FOOTER_MARKER, case=False, na=False).any(),
             axis=1,
         )
         if not cleaned.empty
@@ -771,7 +775,7 @@ def sanitize_editor_rows(df: pd.DataFrame) -> pd.DataFrame:
     if required_present:
         non_empty_mask = cleaned[required_present].apply(
             lambda row: any(
-                str(value).strip().lower() not in {"", "nan", "none", "nat", "null"}
+                str(value).strip().lower() not in NULL_LIKE_TEXT_VALUES
                 for value in row
             ),
             axis=1,
@@ -833,7 +837,7 @@ def render_editor_tab(df: pd.DataFrame) -> None:
     except (StreamlitAPIException, TypeError, ValueError) as exc:
         st.error(
             "The data editor could not render the current values. "
-            "Please review Generation and Parent fields, then try again."
+            f"Please review Generation and Parent fields, then try again. ({type(exc).__name__})"
         )
         st.exception(exc)
         editor_df = editor_input_df
@@ -848,7 +852,7 @@ def render_editor_tab(df: pd.DataFrame) -> None:
             save_df["Generation"] = save_df["Generation"].apply(normalize_generation)
             save_df["Parent"] = save_df["Parent"].apply(
                 lambda value: ""
-                if str(value).strip().lower() in {"", "none", "nan", "nat", "null"}
+                if str(value).strip().lower() in NULL_LIKE_TEXT_VALUES
                 else str(value).strip()
             )
             save_data(save_df)
