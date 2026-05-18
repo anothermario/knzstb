@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
+import html
 import os
+import re
 from datetime import date
 from pathlib import Path
 from typing import Iterable
@@ -10,19 +13,22 @@ from urllib.error import URLError
 
 import pandas as pd
 import streamlit as st
-from PIL import Image
 from streamlit_agraph import Config, Edge, Node, agraph
 
-CSV_PATH = Path(__file__).with_name("family_tree.csv")
+CSV_PATH = Path(__file__).with_name("family_data.csv")
+LEGACY_CSV_PATH = Path(__file__).with_name("family_tree.csv")
 PROFILES_DIR = Path(__file__).parent / "assets" / "profiles"
-PLACEHOLDER_IMG = PROFILES_DIR / "placeholder.png"
 DEFAULT_DATA_URL = os.getenv("FAMILY_TREE_DATA_URL", "").strip()
-REQUIRED_COLUMNS = ["Generation", "Branch", "Name", "Birthdate", "Parent"]
-BRANCH_COLORS = {
-    "Root": "#ff6b6b",
-    "Müller": "#4f8ef7",
-    "Schmidt": "#43b89c",
-}
+REQUIRED_COLUMNS = ["Generation", "Branch", "Birthdate", "Name", "Parent"]
+BRANCH_PALETTE = [
+    "#0f766e",
+    "#2563eb",
+    "#7c3aed",
+    "#ea580c",
+    "#db2777",
+    "#0891b2",
+    "#65a30d",
+]
 
 st.set_page_config(
     page_title="Family Tree",
@@ -34,44 +40,135 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
 
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(160deg, #1a1a2e 0%, #16213e 100%);
-        color: #f0f0f0;
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+        background: #f3f4f6;
+        color: #111827;
     }
-    section[data-testid="stSidebar"] * { color: #f0f0f0 !important; }
-    .profile-card {
-        background: #ffffff;
-        border-radius: 16px;
-        padding: 20px 24px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        border-left: 4px solid #4f8ef7;
-    }
-    .badge {
-        display: inline-block;
-        background: #eef3ff;
-        color: #4f8ef7;
-        border-radius: 20px;
-        padding: 2px 10px;
-        font-size: 0.78rem;
-        font-weight: 600;
-        margin-right: 6px;
-        margin-bottom: 4px;
-    }
-    .editor-header {
-        background: linear-gradient(90deg, #4f8ef7, #7b5ea7);
-        border-radius: 10px;
-        padding: 10px 18px;
-        color: white;
-        font-weight: 600;
-        margin-bottom: 12px;
+    .stApp {
+        background: linear-gradient(180deg, #f9fafb 0%, #eef2f7 100%);
+        color: #111827;
     }
     .main .block-container {
-        background: #f5f7fb;
-        border-radius: 16px;
         padding-top: 1.5rem;
+        padding-bottom: 2rem;
+    }
+    section[data-testid="stSidebar"] {
+        background: #ffffff !important;
+        border-right: 1px solid #d1d5db;
+    }
+    section[data-testid="stSidebar"] * {
+        color: #111827 !important;
+    }
+    [data-testid="stSidebarNav"] {
+        background: #ffffff !important;
+    }
+    .hero-card,
+    .tree-panel,
+    .profile-card,
+    .legend-chip {
+        background: #ffffff;
+        border: 1px solid #d1d5db;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+    }
+    .hero-card {
+        border-radius: 22px;
+        padding: 1.5rem 1.75rem;
+        margin-bottom: 1rem;
+    }
+    .tree-panel {
+        border-radius: 22px;
+        padding: 1.25rem;
+        margin-bottom: 1.25rem;
+    }
+    .profile-card {
+        border-radius: 24px;
+        padding: 1.75rem;
+        text-align: center;
+    }
+    .profile-avatar {
+        width: 180px;
+        height: 180px;
+        object-fit: cover;
+        border-radius: 50%;
+        border: 3px solid #d1d5db;
+        display: block;
+        margin: 0 auto 1rem auto;
+        background: #e5e7eb;
+    }
+    .profile-name {
+        margin: 0;
+        color: #111827;
+        font-size: 1.9rem;
+        font-weight: 800;
+    }
+    .profile-subtitle {
+        color: #4b5563;
+        margin: 0.35rem 0 1.2rem 0;
+        font-size: 1rem;
+    }
+    .profile-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.8rem;
+        text-align: left;
+    }
+    .profile-detail {
+        border-radius: 16px;
+        border: 1px solid #e5e7eb;
+        background: #f9fafb;
+        padding: 0.9rem 1rem;
+    }
+    .profile-detail-label {
+        display: block;
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 0.2rem;
+    }
+    .profile-detail-value {
+        color: #111827;
+        font-size: 1rem;
+        font-weight: 700;
+    }
+    .legend-chip {
+        border-radius: 999px;
+        padding: 0.55rem 0.9rem;
+        text-align: center;
+        font-weight: 700;
+        color: #111827;
+    }
+    .legend-swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 0.5rem;
+        border: 1px solid rgba(17, 24, 39, 0.2);
+    }
+    .stMetric {
+        background: #ffffff;
+        border: 1px solid #d1d5db;
+        border-radius: 18px;
+        padding: 0.4rem;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.5rem;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background: #ffffff;
+        border-radius: 999px;
+        color: #111827;
+        border: 1px solid #d1d5db;
+        padding: 0.4rem 1rem;
+    }
+    .stTabs [aria-selected="true"] {
+        background: #111827 !important;
+        color: #ffffff !important;
     }
     </style>
     """,
@@ -85,19 +182,48 @@ def to_export_csv_url(url: str) -> str:
     return url
 
 
+def normalize_generation(value) -> str:
+    if pd.isna(value):
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    if text.isdigit():
+        return f"G{int(text)}"
+    match = re.search(r"(\d+)", text)
+    if match:
+        return f"G{int(match.group(1))}"
+    return text
+
+
+def generation_sort_key(value: str) -> tuple[int, str]:
+    match = re.search(r"(\d+)", value or "")
+    if match:
+        return int(match.group(1)), value
+    return 999, value
+
+
+def hierarchy_sort_key(name: str, parents: dict[str, str]) -> tuple[int, str]:
+    level = 1
+    seen = {name}
+    parent = parents.get(name, "")
+    while parent and parent not in seen:
+        seen.add(parent)
+        level += 1
+        parent = parents.get(parent, "")
+    return level, name
+
+
 def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     normalized = df.copy()
+    normalized = normalized.rename(columns={"Partent": "Parent"})
+
     for column in REQUIRED_COLUMNS:
         if column not in normalized.columns:
             normalized[column] = ""
 
     normalized = normalized[REQUIRED_COLUMNS]
-    normalized["Generation"] = (
-        pd.to_numeric(normalized["Generation"], errors="coerce")
-        .fillna(1)
-        .clip(lower=1)
-        .astype(int)
-    )
+    normalized["Generation"] = normalized["Generation"].apply(normalize_generation)
     normalized["Birthdate"] = pd.to_datetime(normalized["Birthdate"], errors="coerce")
 
     for column in ("Branch", "Name", "Parent"):
@@ -105,12 +231,17 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             lambda value: "" if pd.isna(value) else str(value).strip()
         )
 
-    normalized = normalized[normalized["Name"] != ""]
+    normalized = normalized[normalized["Name"] != ""].drop_duplicates("Name", keep="last")
+    parents = dict(zip(normalized["Name"], normalized["Parent"]))
+    normalized = normalized.assign(
+        _generation_sort=normalized["Generation"].apply(generation_sort_key),
+        _hierarchy_sort=normalized["Name"].apply(lambda name: hierarchy_sort_key(name, parents)),
+    )
     normalized = normalized.sort_values(
-        by=["Generation", "Branch", "Birthdate", "Name"],
+        by=["_generation_sort", "_hierarchy_sort", "Branch", "Birthdate", "Name"],
         na_position="last",
-    ).reset_index(drop=True)
-    return normalized
+    ).drop(columns=["_generation_sort", "_hierarchy_sort"])
+    return normalized.reset_index(drop=True)
 
 
 def read_remote_data(url: str) -> pd.DataFrame:
@@ -119,6 +250,9 @@ def read_remote_data(url: str) -> pd.DataFrame:
 
 def bootstrap_local_data() -> None:
     if CSV_PATH.exists() and CSV_PATH.stat().st_size > 0:
+        return
+    if LEGACY_CSV_PATH.exists() and LEGACY_CSV_PATH.stat().st_size > 0:
+        save_data(pd.read_csv(LEGACY_CSV_PATH))
         return
     if not DEFAULT_DATA_URL:
         return
@@ -173,14 +307,49 @@ def average_age(birthdate_series: pd.Series) -> float | None:
     return sum(ages) / len(ages)
 
 
-def get_profile_image(name: str):
+def build_initials(name: str) -> str:
+    parts = [part for part in re.split(r"[\s-]+", name.strip()) if part]
+    initials = "".join(part[0].upper() for part in parts[:2])
+    return initials or "?"
+
+
+def image_file_to_data_uri(path: Path) -> str:
+    media_type = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+    }.get(path.suffix.lower(), "application/octet-stream")
+    encoded = base64.b64encode(path.read_bytes()).decode("utf-8")
+    return f"data:{media_type};base64,{encoded}"
+
+
+def fallback_avatar_data_uri(name: str) -> str:
+    initials = html.escape(build_initials(name))
+    svg = f"""
+    <svg xmlns="http://www.w3.org/2000/svg" width="280" height="280" viewBox="0 0 280 280">
+      <circle cx="140" cy="140" r="134" fill="#d1d5db" stroke="#9ca3af" stroke-width="4" />
+      <text x="50%" y="53%" dominant-baseline="middle" text-anchor="middle"
+            font-family="Inter, Arial, sans-serif" font-size="92" font-weight="800" fill="#374151">
+        {initials}
+      </text>
+    </svg>
+    """
+    encoded = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
+def profile_image_data_uri(name: str) -> str:
     for ext in ("jpg", "jpeg", "png"):
         path = PROFILES_DIR / f"{name}.{ext}"
         if path.exists():
-            return Image.open(path)
-    if PLACEHOLDER_IMG.exists():
-        return Image.open(PLACEHOLDER_IMG)
-    return None
+            return image_file_to_data_uri(path)
+    return fallback_avatar_data_uri(name)
+
+
+def birth_year_label(birthdate: pd.Timestamp | None) -> str:
+    if pd.isna(birthdate):
+        return "?"
+    return str(birthdate.year)
 
 
 def get_ancestors(df: pd.DataFrame, names: Iterable[str]) -> set[str]:
@@ -189,31 +358,81 @@ def get_ancestors(df: pd.DataFrame, names: Iterable[str]) -> set[str]:
     for name in list(names):
         parent = parents.get(name, "")
         while parent:
+            if parent in collected:
+                break
             collected.add(parent)
             parent = parents.get(parent, "")
     return collected
 
 
-def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config]:
+def build_hierarchy_levels(df: pd.DataFrame) -> dict[str, int]:
+    parents = dict(zip(df["Name"], df["Parent"]))
+    levels: dict[str, int] = {}
+
+    def resolve(name: str, trail: set[str]) -> int:
+        if name in levels:
+            return levels[name]
+        parent = parents.get(name, "")
+        if not parent or parent == name or parent in trail or parent not in parents:
+            levels[name] = 1
+            return 1
+        levels[name] = resolve(parent, trail | {name}) + 1
+        return levels[name]
+
+    for member_name in df["Name"]:
+        resolve(member_name, set())
+    return levels
+
+
+def build_branch_colors(branches: Iterable[str]) -> dict[str, str]:
+    cleaned = sorted({branch for branch in branches if branch})
+    colors = {
+        branch: BRANCH_PALETTE[index % len(BRANCH_PALETTE)]
+        for index, branch in enumerate(cleaned)
+    }
+    colors["Unassigned"] = "#475569"
+    return colors
+
+
+def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[str, str]]:
     nodes: list[Node] = []
     edges: list[Edge] = []
+    levels = build_hierarchy_levels(df)
+    branch_colors = build_branch_colors(df["Branch"].tolist())
 
     for _, row in df.iterrows():
-        age = compute_age(row["Birthdate"])
-        age_label = f"{age} yrs" if age is not None else "Age unknown"
-        branch_color = BRANCH_COLORS.get(row["Branch"], "#7b8794")
+        branch = row["Branch"] or "Unassigned"
+        label = (
+            f"<b>{html.escape(row['Name'])} ({birth_year_label(row['Birthdate'])})</b>"
+        )
         nodes.append(
             Node(
                 id=row["Name"],
-                label=row["Name"],
-                title=f"{row['Name']} • {age_label} • {row['Branch'] or 'No branch'}",
-                shape="box",
-                size=24,
-                color=branch_color,
-                level=int(row["Generation"]),
-                borderWidth=2,
-                font={"color": "#ffffff", "face": "Inter", "size": 18},
-                margin=14,
+                label=label,
+                title=(
+                    f"{row['Name']} • {format_birthdate(row['Birthdate'])} • "
+                    f"{branch}"
+                ),
+                shape="circularImage",
+                image=profile_image_data_uri(row["Name"]),
+                size=40,
+                level=levels.get(row["Name"], 1),
+                borderWidth=3,
+                color={
+                    "background": "#ffffff",
+                    "border": branch_colors.get(branch, "#475569"),
+                    "highlight": {
+                        "background": "#ffffff",
+                        "border": "#111827",
+                    },
+                },
+                font={
+                    "color": "#111827",
+                    "face": "Inter",
+                    "size": 19,
+                    "multi": "html",
+                },
+                margin={"top": 10, "right": 10, "bottom": 14, "left": 10},
             )
         )
         if row["Parent"]:
@@ -221,27 +440,27 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config]:
                 Edge(
                     source=row["Parent"],
                     target=row["Name"],
-                    color="#cbd5e1",
+                    color="#94a3b8",
                     smooth=False,
-                    width=2,
+                    width=2.2,
                 )
             )
 
     config = Config(
-        width=1100,
-        height=560,
+        width=1200,
+        height=680,
         directed=True,
         physics=False,
         hierarchical=True,
-        levelSeparation=150,
-        nodeSpacing=180,
-        treeSpacing=220,
+        levelSeparation=180,
+        nodeSpacing=210,
+        treeSpacing=240,
         direction="UD",
         sortMethod="directed",
         fit=True,
-        highlightColor="#1d4ed8",
+        highlightColor="#111827",
     )
-    return nodes, edges, config
+    return nodes, edges, config, branch_colors
 
 
 def ensure_selected_member(df: pd.DataFrame) -> str | None:
@@ -253,78 +472,101 @@ def ensure_selected_member(df: pd.DataFrame) -> str | None:
 
 
 def render_profile_card(member: pd.Series | None) -> None:
-    st.markdown("### 👤 Profile")
+    st.markdown("### 👤 Profile Card")
     if member is None:
-        st.info("Click a node in the tree to open a family member profile.")
+        st.info("Select a family member to open the profile card.")
         return
 
-    image = get_profile_image(member["Name"])
     age = compute_age(member["Birthdate"])
-
-    with st.container():
-        st.markdown('<div class="profile-card">', unsafe_allow_html=True)
-        if image:
-            st.image(image, use_container_width=True)
-        st.markdown(f"## {member['Name']}")
-        st.markdown(
-            "".join(
-                [
-                    f'<span class="badge">Generation {int(member["Generation"])}</span>',
-                    f'<span class="badge">{member["Branch"] or "No branch"}</span>',
-                ]
-            ),
-            unsafe_allow_html=True,
-        )
-        st.write(f"**Birthdate:** {format_birthdate(member['Birthdate'])}")
-        st.write(f"**Age:** {age if age is not None else 'Unknown'}")
-        st.write(f"**Parent:** {member['Parent'] or '—'}")
-        st.markdown("</div>", unsafe_allow_html=True)
+    card_html = f"""
+    <div class="profile-card">
+      <img
+        class="profile-avatar"
+        src="{profile_image_data_uri(member['Name'])}"
+        alt="{html.escape(member['Name'])}"
+      />
+      <h2 class="profile-name">{html.escape(member['Name'])}</h2>
+      <p class="profile-subtitle">
+        {html.escape(member['Generation'] or 'Generation unknown')} ·
+        {html.escape(member['Branch'] or 'Unassigned branch')}
+      </p>
+      <div class="profile-grid">
+        <div class="profile-detail">
+          <span class="profile-detail-label">Age</span>
+          <span class="profile-detail-value">{age if age is not None else 'Unknown'}</span>
+        </div>
+        <div class="profile-detail">
+          <span class="profile-detail-label">Branch</span>
+          <span class="profile-detail-value">{html.escape(member['Branch'] or 'Unassigned')}</span>
+        </div>
+        <div class="profile-detail">
+          <span class="profile-detail-label">Birthdate</span>
+          <span class="profile-detail-value">{html.escape(format_birthdate(member['Birthdate']))}</span>
+        </div>
+        <div class="profile-detail">
+          <span class="profile-detail-label">Parent</span>
+          <span class="profile-detail-value">{html.escape(member['Parent'] or '—')}</span>
+        </div>
+      </div>
+    </div>
+    """
+    st.markdown(card_html, unsafe_allow_html=True)
 
 
 def render_sidebar(df: pd.DataFrame) -> None:
     with st.sidebar:
-        st.markdown("## 👨‍👩‍👧‍👦 Family Tree")
-        st.caption("Click any node in the graph or jump to a member here.")
+        st.markdown("## Family Navigator")
+        st.caption("Light, high-contrast navigation for quick member selection.")
         names = sorted(df["Name"].tolist())
-        selected = st.selectbox(
-            "Quick member lookup",
-            names,
-            index=names.index(ensure_selected_member(df)) if names else None,
-        )
-        st.session_state["selected_member"] = selected
+
+        if names:
+            selected = st.selectbox(
+                "Choose a family member",
+                names,
+                index=names.index(ensure_selected_member(df)),
+            )
+            st.session_state["selected_member"] = selected
+        else:
+            st.selectbox(
+                "Choose a family member",
+                ["No family members available"],
+                disabled=True,
+            )
 
         st.markdown("---")
-        st.markdown("### 📁 Photos")
+        st.markdown("### Photos")
         st.caption(
-            f"Store portraits in `{PROFILES_DIR.as_posix()}` as `[Name].jpg`, "
-            "`[Name].jpeg`, or `[Name].png`."
+            f"Add portraits in `{PROFILES_DIR.as_posix()}` as `[Name].jpg`. "
+            "Missing photos automatically render as gray initial badges."
         )
 
         st.markdown("---")
-        st.markdown("### 🔄 Data source")
+        st.markdown("### Data source")
         st.caption(
-            "Local edits save to `family_tree.csv`. You can also refresh from the "
-            "Google Sheet configured in `FAMILY_TREE_DATA_URL`."
+            "The app reads and saves local edits in `family_data.csv` and builds the "
+            "tree from each member's `Name` and `Parent` values."
         )
 
 
 def render_tree_tab(df: pd.DataFrame) -> None:
-    st.markdown("### 🌳 Interactive Family Tree")
-    st.caption("Click a node to open the profile card.")
+    st.markdown("### 🌳 Family Tree")
+    st.caption(
+        "Portrait nodes use bold black labels in the format Name (Birthyear). "
+        "Click any node to focus its profile."
+    )
 
     branches = ["All"] + sorted(
-        branch
-        for branch in df["Branch"].unique().tolist()
-        if pd.notna(branch) and branch != ""
+        branch for branch in df["Branch"].unique().tolist() if pd.notna(branch) and branch
     )
-    col_filter, col_gen = st.columns(2)
+    generations = sorted(
+        [generation for generation in df["Generation"].unique().tolist() if generation],
+        key=generation_sort_key,
+    )
 
-    with col_filter:
+    filter_col, generation_col = st.columns(2)
+    with filter_col:
         branch_filter = st.selectbox("Filter by branch", branches)
-    with col_gen:
-        generations = sorted(
-            int(gen) for gen in df["Generation"].unique().tolist() if pd.notna(gen)
-        )
+    with generation_col:
         generation_filter = st.multiselect(
             "Filter by generation",
             generations,
@@ -337,38 +579,48 @@ def render_tree_tab(df: pd.DataFrame) -> None:
         filtered = filtered[filtered["Name"].isin(get_ancestors(df, names))]
     if generation_filter:
         filtered = filtered[filtered["Generation"].isin(generation_filter)]
+    else:
+        filtered = filtered.iloc[0:0]
 
     if filtered.empty:
         st.info("No members match the current filters.")
         return
 
-    tree_col, profile_col = st.columns([2.1, 1], gap="large")
-    with tree_col:
-        legend_cols = st.columns(max(len(BRANCH_COLORS), 1))
-        for index, (branch, color) in enumerate(BRANCH_COLORS.items()):
-            legend_cols[index].markdown(
-                (
-                    f"<div style='background:{color};color:white;border-radius:8px;"
-                    "padding:6px 10px;text-align:center;font-weight:600;'>"
-                    f"{branch}</div>"
-                ),
-                unsafe_allow_html=True,
-            )
+    nodes, edges, config, branch_colors = build_graph(filtered)
 
-        nodes, edges, config = build_graph(filtered)
-        clicked = agraph(nodes=nodes, edges=edges, config=config)
-        if isinstance(clicked, dict) and clicked.get("id"):
-            st.session_state["selected_member"] = clicked["id"]
-        elif isinstance(clicked, str):
-            st.session_state["selected_member"] = clicked
-
-    with profile_col:
-        selected_name = ensure_selected_member(df)
-        selected_member = (
-            df.loc[df["Name"] == selected_name].iloc[0]
-            if selected_name in df["Name"].values
-            else None
+    legend_branches = sorted(
+        {branch if branch else "Unassigned" for branch in filtered["Branch"].tolist()}
+    )
+    legend_cols = st.columns(max(len(legend_branches), 1))
+    for index, branch in enumerate(legend_branches):
+        legend_cols[index].markdown(
+            (
+                "<div class='legend-chip'>"
+                f"<span class='legend-swatch' style='background:{branch_colors.get(branch, '#475569')};'></span>"
+                f"{html.escape(branch)}"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
         )
+
+    st.markdown("<div class='tree-panel'>", unsafe_allow_html=True)
+    clicked = agraph(nodes=nodes, edges=edges, config=config)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if isinstance(clicked, dict) and clicked.get("id"):
+        st.session_state["selected_member"] = clicked["id"]
+    elif isinstance(clicked, str):
+        st.session_state["selected_member"] = clicked
+
+    selected_name = ensure_selected_member(df)
+    selected_member = (
+        df.loc[df["Name"] == selected_name].iloc[0]
+        if selected_name in df["Name"].values
+        else None
+    )
+
+    _, profile_col, _ = st.columns([1, 1.8, 1])
+    with profile_col:
         render_profile_card(selected_member)
 
 
@@ -378,7 +630,7 @@ def render_stats_tab(df: pd.DataFrame) -> None:
     avg_age = average_age(df["Birthdate"])
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("👥 Total members", len(df))
-    col2.metric("🌿 Generations", int(df["Generation"].nunique()))
+    col2.metric("🌿 Generations", int(df["Generation"].replace("", pd.NA).nunique()))
     col3.metric("🌳 Branches", int(df["Branch"].replace("", pd.NA).nunique()))
     col4.metric("🎈 Average age", f"{avg_age:.1f} yrs" if avg_age is not None else "—")
 
@@ -386,13 +638,18 @@ def render_stats_tab(df: pd.DataFrame) -> None:
     left, right = st.columns(2)
     with left:
         st.markdown("**Members per generation**")
-        st.bar_chart(df.groupby("Generation").size().rename("Count"))
+        generation_counts = df.groupby("Generation").size().rename("Count")
+        generation_counts = generation_counts.loc[
+            sorted(generation_counts.index.tolist(), key=generation_sort_key)
+        ]
+        st.bar_chart(generation_counts)
     with right:
         st.markdown("**Members per branch**")
         branch_counts = (
             df.assign(Branch=df["Branch"].replace("", "Unassigned"))
             .groupby("Branch")
             .size()
+            .sort_index()
             .rename("Count")
         )
         st.bar_chart(branch_counts)
@@ -425,8 +682,8 @@ def refresh_from_sheet() -> None:
 
 
 def render_editor_tab(df: pd.DataFrame) -> None:
-    st.markdown('<div class="editor-header">✏️ Edit Family Data</div>', unsafe_allow_html=True)
-    st.caption("Add new members, fix dates, then save back to the local CSV.")
+    st.markdown("### ✏️ Edit Family Data")
+    st.caption("Edit the provided dataset and save updates back to `family_data.csv`.")
 
     action_col, info_col = st.columns([1, 3])
     with action_col:
@@ -435,18 +692,16 @@ def render_editor_tab(df: pd.DataFrame) -> None:
     with info_col:
         st.caption(
             "Uses the Google Sheet from `FAMILY_TREE_DATA_URL` as a reset source, "
-            "then writes the result to `family_tree.csv` for local editing."
+            "then writes the result to `family_data.csv` for local editing."
         )
 
     editor_df = st.data_editor(
         df,
         column_config={
-            "Generation": st.column_config.NumberColumn(
-                "Generation", min_value=1, max_value=20, step=1, required=True
-            ),
+            "Generation": st.column_config.TextColumn("Generation", required=True),
             "Branch": st.column_config.TextColumn("Branch"),
-            "Name": st.column_config.TextColumn("Name", required=True),
             "Birthdate": st.column_config.DateColumn("Birthdate", format="YYYY-MM-DD"),
+            "Name": st.column_config.TextColumn("Name", required=True),
             "Parent": st.column_config.TextColumn("Parent"),
         },
         num_rows="dynamic",
@@ -459,7 +714,7 @@ def render_editor_tab(df: pd.DataFrame) -> None:
     with save_col:
         if st.button("💾 Save changes", type="primary"):
             save_data(editor_df)
-            st.success("Saved updates to family_tree.csv.")
+            st.success("Saved updates to family_data.csv.")
             st.rerun()
     with reset_col:
         if st.button("↩️ Discard changes"):
@@ -473,19 +728,20 @@ def main() -> None:
 
     st.markdown(
         """
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
-          <span style="font-size:2.8rem;">🌳</span>
-          <div>
-            <h1 style="margin:0;font-size:2rem;font-weight:700;color:#1a1a2e;">Family Tree</h1>
-            <p style="margin:0;color:#666;font-size:0.9rem;">
-              Interactive genealogy explorer with dynamic ages and editable data
-            </p>
+        <div class="hero-card">
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+            <span style="font-size:2.8rem;">🌳</span>
+            <div>
+              <h1 style="margin:0;font-size:2.3rem;font-weight:800;color:#111827;">Künz Family Tree</h1>
+              <p style="margin:0.35rem 0 0 0;color:#4b5563;font-size:1rem;">
+                High-contrast, data-driven family profiles built directly from <strong>family_data.csv</strong>.
+              </p>
+            </div>
           </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    st.markdown("---")
 
     tab_tree, tab_stats, tab_editor = st.tabs(
         ["🌳 Family Tree", "📊 Statistics", "✏️ Data Editor"]
