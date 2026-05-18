@@ -8,7 +8,7 @@ import os
 import re
 from datetime import date
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 from urllib.error import URLError
 
 import pandas as pd
@@ -387,13 +387,26 @@ def build_hierarchy_levels(df: pd.DataFrame) -> dict[str, int]:
 
 
 def build_branch_colors(branches: Iterable[str]) -> dict[str, str]:
-    cleaned = sorted({branch for branch in branches if branch})
+    cleaned = sorted(
+        {
+            str(branch).strip()
+            for branch in branches
+            if pd.notna(branch) and str(branch).strip()
+        }
+    )
     colors = {
         branch: BRANCH_PALETTE[index % len(BRANCH_PALETTE)]
         for index, branch in enumerate(cleaned)
     }
     colors["Unassigned"] = "#475569"
     return colors
+
+
+def safe_text(value: Any, default: str = "") -> str:
+    if pd.isna(value):
+        return default
+    text = str(value).strip()
+    return text if text else default
 
 
 def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[str, str]]:
@@ -403,22 +416,24 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[
     branch_colors = build_branch_colors(df["Branch"].tolist())
 
     for _, row in df.iterrows():
-        branch = row["Branch"] or "Unassigned"
+        branch = safe_text(row["Branch"], "Unassigned")
+        member_name = safe_text(row["Name"])
+        parent_name = safe_text(row["Parent"])
         label = (
-            f"<b>{html.escape(row['Name'])} ({birth_year_label(row['Birthdate'])})</b>"
+            f"<b>{html.escape(member_name)} ({birth_year_label(row['Birthdate'])})</b>"
         )
         nodes.append(
             Node(
-                id=row["Name"],
+                id=member_name,
                 label=label,
                 title=(
-                    f"{row['Name']} • {format_birthdate(row['Birthdate'])} • "
+                    f"{member_name} • {format_birthdate(row['Birthdate'])} • "
                     f"{branch}"
                 ),
                 shape="circularImage",
-                image=profile_image_data_uri(row["Name"]),
+                image=profile_image_data_uri(member_name),
                 size=40,
-                level=levels.get(row["Name"], 1),
+                level=levels.get(member_name, 1),
                 borderWidth=3,
                 color={
                     "background": "#ffffff",
@@ -437,11 +452,11 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[
                 margin={"top": 10, "right": 10, "bottom": 14, "left": 10},
             )
         )
-        if row["Parent"]:
+        if parent_name:
             edges.append(
                 Edge(
-                    source=row["Parent"],
-                    target=row["Name"],
+                    source=parent_name,
+                    target=member_name,
                     color="#94a3b8",
                     smooth=False,
                     width=2.2,
@@ -480,17 +495,21 @@ def render_profile_card(member: pd.Series | None) -> None:
         return
 
     age = compute_age(member["Birthdate"])
+    name = safe_text(member["Name"], "Unknown")
+    generation = safe_text(member["Generation"], "Generation unknown")
+    branch = safe_text(member["Branch"], "Unassigned branch")
+    parent = safe_text(member["Parent"], "—")
     card_html = f"""
     <div class="profile-card">
       <img
         class="profile-avatar"
-        src="{profile_image_data_uri(member['Name'])}"
-        alt="{html.escape(member['Name'])}"
+        src="{profile_image_data_uri(name)}"
+        alt="{html.escape(name)}"
       />
-      <h2 class="profile-name">{html.escape(member['Name'])}</h2>
+      <h2 class="profile-name">{html.escape(name)}</h2>
       <p class="profile-subtitle">
-        {html.escape(member['Generation'] or 'Generation unknown')} ·
-        {html.escape(member['Branch'] or 'Unassigned branch')}
+        {html.escape(generation)} ·
+        {html.escape(branch)}
       </p>
       <div class="profile-grid">
         <div class="profile-detail">
@@ -499,7 +518,7 @@ def render_profile_card(member: pd.Series | None) -> None:
         </div>
         <div class="profile-detail">
           <span class="profile-detail-label">Branch</span>
-          <span class="profile-detail-value">{html.escape(member['Branch'] or 'Unassigned')}</span>
+          <span class="profile-detail-value">{html.escape(branch)}</span>
         </div>
         <div class="profile-detail">
           <span class="profile-detail-label">Birthdate</span>
@@ -507,7 +526,7 @@ def render_profile_card(member: pd.Series | None) -> None:
         </div>
         <div class="profile-detail">
           <span class="profile-detail-label">Parent</span>
-          <span class="profile-detail-value">{html.escape(member['Parent'] or '—')}</span>
+          <span class="profile-detail-value">{html.escape(parent)}</span>
         </div>
       </div>
     </div>
@@ -563,7 +582,11 @@ def render_tree_tab(df: pd.DataFrame) -> None:
         branch for branch in df["Branch"].unique().tolist() if pd.notna(branch) and branch
     )
     generations = sorted(
-        [generation for generation in df["Generation"].unique().tolist() if generation],
+        [
+            generation
+            for generation in df["Generation"].unique().tolist()
+            if pd.notna(generation) and str(generation).strip()
+        ],
         key=generation_sort_key,
     )
 
@@ -697,14 +720,28 @@ def render_editor_tab(df: pd.DataFrame) -> None:
             "then writes the result to `family_data.csv` for local editing."
         )
 
+    def text_column(label: str, required: bool = False):
+        try:
+            return st.column_config.TextColumn(label, required=required)
+        except TypeError:
+            # Streamlit compatibility: older versions don't support "required".
+            return st.column_config.TextColumn(label)
+
+    def date_column(label: str):
+        try:
+            return st.column_config.DateColumn(label, format="YYYY-MM-DD")
+        except TypeError:
+            # Streamlit compatibility: older versions don't support "format".
+            return st.column_config.DateColumn(label)
+
     editor_df = st.data_editor(
         df,
         column_config={
-            "Generation": st.column_config.TextColumn("Generation", required=True),
-            "Branch": st.column_config.TextColumn("Branch"),
-            "Birthdate": st.column_config.DateColumn("Birthdate", format="YYYY-MM-DD"),
-            "Name": st.column_config.TextColumn("Name", required=True),
-            "Parent": st.column_config.TextColumn("Parent"),
+            "Generation": text_column("Generation", required=True),
+            "Branch": text_column("Branch"),
+            "Birthdate": date_column("Birthdate"),
+            "Name": text_column("Name", required=True),
+            "Parent": text_column("Parent"),
         },
         num_rows="dynamic",
         hide_index=True,
