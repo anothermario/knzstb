@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import date
 from pathlib import Path
 from typing import Iterable
@@ -15,9 +16,10 @@ from streamlit_agraph import Config, Edge, Node, agraph
 CSV_PATH = Path(__file__).with_name("family_tree.csv")
 PROFILES_DIR = Path(__file__).parent / "assets" / "profiles"
 PLACEHOLDER_IMG = PROFILES_DIR / "placeholder.png"
-DEFAULT_DATA_URL = (
+DEFAULT_DATA_URL = os.getenv(
+    "FAMILY_TREE_DATA_URL",
     "https://docs.google.com/spreadsheets/d/"
-    "10jJ9WtKPP6onZhnHN6AK5WSgLbKirzD2qODFOPDvgu4/edit?usp=sharing"
+    "10jJ9WtKPP6onZhnHN6AK5WSgLbKirzD2qODFOPDvgu4/edit?usp=sharing",
 )
 REQUIRED_COLUMNS = ["Generation", "Branch", "Name", "Birthdate", "Parent"]
 BRANCH_COLORS = {
@@ -157,6 +159,13 @@ def format_birthdate(birthdate: pd.Timestamp | None) -> str:
     if pd.isna(birthdate):
         return "Unknown"
     return birthdate.strftime("%d %B %Y")
+
+
+def average_age(birthdates: pd.Series) -> float | None:
+    ages = [age for age in birthdates.apply(compute_age).tolist() if age is not None]
+    if not ages:
+        return None
+    return sum(ages) / len(ages)
 
 
 def get_profile_image(name: str):
@@ -349,12 +358,12 @@ def render_tree_tab(df: pd.DataFrame) -> None:
 def render_stats_tab(df: pd.DataFrame) -> None:
     st.markdown("### 📊 Family Statistics")
 
-    ages = [age for age in df["Birthdate"].apply(compute_age).tolist() if age is not None]
+    avg_age = average_age(df["Birthdate"])
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("👥 Total members", len(df))
     col2.metric("🌿 Generations", int(df["Generation"].nunique()))
     col3.metric("🌳 Branches", int(df["Branch"].replace("", pd.NA).nunique()))
-    col4.metric("🎈 Average age", f"{(sum(ages) / len(ages)):.1f} yrs" if ages else "—")
+    col4.metric("🎈 Average age", f"{avg_age:.1f} yrs" if avg_age is not None else "—")
 
     st.markdown("---")
     left, right = st.columns(2)
@@ -375,11 +384,14 @@ def render_stats_tab(df: pd.DataFrame) -> None:
 def refresh_from_sheet() -> None:
     try:
         remote_df = read_remote_data(DEFAULT_DATA_URL)
-    except (URLError, OSError, ValueError, pd.errors.ParserError):
-        st.error(
-            "Could not refresh from the Google Sheet. Check the URL or network access "
-            "and try again."
-        )
+    except URLError:
+        st.error("Could not reach the Google Sheet. Check network access and try again.")
+        return
+    except pd.errors.ParserError:
+        st.error("The Google Sheet data could not be parsed as CSV.")
+        return
+    except (OSError, ValueError):
+        st.error("The configured Google Sheet URL is invalid or returned unsupported data.")
         return
     save_data(remote_df)
     st.success("Reloaded local data from the provided Google Sheet.")

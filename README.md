@@ -43,9 +43,7 @@ knzstb/
 pip install -r requirements.txt
 ```
 
-> Requires Python 3.9+ and the **Graphviz system package**:
->
-> The tree itself renders with `streamlit-agraph`, so no Graphviz system install is needed anymore.
+Requires Python 3.9+.
 
 ### 2 — Add your data
 
