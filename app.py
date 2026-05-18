@@ -164,8 +164,10 @@ def format_birthdate(birthdate: pd.Timestamp | None) -> str:
     return birthdate.strftime("%d %B %Y")
 
 
-def average_age(birthdates: pd.Series) -> float | None:
-    ages = [age for age in birthdates.apply(compute_age).tolist() if age is not None]
+def average_age(birthdate_series: pd.Series) -> float | None:
+    ages = [
+        age for age in birthdate_series.apply(compute_age).tolist() if age is not None
+    ]
     if not ages:
         return None
     return sum(ages) / len(ages)
@@ -310,7 +312,11 @@ def render_tree_tab(df: pd.DataFrame) -> None:
     st.markdown("### 🌳 Interactive Family Tree")
     st.caption("Click a node to open the profile card.")
 
-    branches = ["All"] + sorted(branch for branch in df["Branch"].unique().tolist() if branch)
+    branches = ["All"] + sorted(
+        branch
+        for branch in df["Branch"].unique().tolist()
+        if pd.notna(branch) and branch != ""
+    )
     col_filter, col_gen = st.columns(2)
 
     with col_filter:
