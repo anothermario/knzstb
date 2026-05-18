@@ -235,6 +235,7 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             normalized[column] = ""
 
     normalized = normalized[REQUIRED_COLUMNS]
+    parent_was_missing = normalized["Parent"].isna()
     normalized["Generation"] = normalized["Generation"].apply(normalize_generation)
     normalized["Birthdate"] = pd.to_datetime(normalized["Birthdate"], errors="coerce")
 
@@ -246,7 +247,9 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if ROOT_MEMBER_NAME in normalized["Name"].values:
         normalized.loc[normalized["Name"] == ROOT_MEMBER_NAME, "Parent"] = ""
         rootless_mask = (
-            (normalized["Parent"] == "") & (normalized["Name"] != ROOT_MEMBER_NAME)
+            parent_was_missing
+            & (normalized["Parent"] == "")
+            & (normalized["Name"] != ROOT_MEMBER_NAME)
         )
         normalized.loc[rootless_mask, "Parent"] = ROOT_MEMBER_NAME
 
@@ -792,7 +795,13 @@ def render_editor_tab(df: pd.DataFrame) -> None:
 
 def main() -> None:
     df = load_data()
+    before_count = len(df)
     df = df.dropna(subset=["Name", "Generation"])
+    removed_count = before_count - len(df)
+    if removed_count > 0:
+        st.warning(
+            f"Filtered out {removed_count} rows with missing Name or Generation values."
+        )
     ensure_selected_member(df)
     render_sidebar(df)
 
