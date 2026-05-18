@@ -357,8 +357,10 @@ def get_ancestors(df: pd.DataFrame, names: Iterable[str]) -> set[str]:
     parents = dict(zip(df["Name"], df["Parent"]))
     collected = set(names)
     for name in list(names):
+        seen = {name}
         parent = parents.get(name, "")
-        while parent and parent != name and parent not in collected:
+        while parent and parent not in seen:
+            seen.add(parent)
             collected.add(parent)
             parent = parents.get(parent, "")
     return collected
@@ -520,10 +522,12 @@ def render_sidebar(df: pd.DataFrame) -> None:
         names = sorted(df["Name"].tolist())
 
         if names:
+            selected_name = ensure_selected_member(df)
+            selected_index = names.index(selected_name) if selected_name in names else 0
             selected = st.selectbox(
                 "Choose a family member",
                 names,
-                index=names.index(ensure_selected_member(df)),
+                index=selected_index,
             )
             st.session_state["selected_member"] = selected
         else:
@@ -637,9 +641,9 @@ def render_stats_tab(df: pd.DataFrame) -> None:
     with left:
         st.markdown("**Members per generation**")
         generation_counts = df.groupby("Generation").size().rename("Count")
-        generation_counts = generation_counts.loc[
+        generation_counts = generation_counts.reindex(
             sorted(generation_counts.index.tolist(), key=generation_sort_key)
-        ]
+        )
         st.bar_chart(generation_counts)
     with right:
         st.markdown("**Members per branch**")
