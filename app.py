@@ -734,24 +734,39 @@ def render_editor_tab(df: pd.DataFrame) -> None:
             # Streamlit compatibility: older versions don't support "format".
             return st.column_config.DateColumn(label)
 
-    editor_df = st.data_editor(
-        df,
-        column_config={
-            "Generation": text_column("Generation", required=True),
-            "Branch": text_column("Branch"),
-            "Birthdate": date_column("Birthdate"),
-            "Name": text_column("Name", required=True),
-            "Parent": text_column("Parent"),
-        },
-        num_rows="dynamic",
-        hide_index=True,
-        use_container_width=True,
-        key="family_editor",
-    )
+    column_config = {
+        "Generation": text_column("Generation", required=True),
+        "Branch": text_column("Branch"),
+        "Birthdate": date_column("Birthdate"),
+        "Name": text_column("Name", required=True),
+        "Parent": text_column("Parent"),
+    }
+    try:
+        editor_df = st.data_editor(
+            df,
+            column_config=column_config,
+            num_rows="dynamic",
+            hide_index=True,
+            use_container_width=True,
+            key="family_editor",
+        )
+    except TypeError:
+        # Streamlit compatibility: older versions may not support all data_editor kwargs.
+        editor_df = st.data_editor(
+            df,
+            column_config=column_config,
+            hide_index=True,
+            key="family_editor",
+        )
 
     save_col, reset_col = st.columns([1, 5])
     with save_col:
-        if st.button("💾 Save changes", type="primary"):
+        try:
+            save_clicked = st.button("💾 Save changes", type="primary")
+        except TypeError:
+            # Streamlit compatibility: older versions don't support button "type".
+            save_clicked = st.button("💾 Save changes")
+        if save_clicked:
             save_data(editor_df)
             st.success("Saved updates to family_data.csv.")
             st.rerun()
