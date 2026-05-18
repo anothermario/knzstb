@@ -242,6 +242,11 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         normalized[column] = normalized[column].apply(
             lambda value: "" if pd.isna(value) else str(value).strip()
         )
+    normalized["Parent"] = normalized["Parent"].apply(
+        lambda value: ""
+        if str(value).strip().lower() in {"", "none", "nan", "nat", "null"}
+        else str(value).strip()
+    )
 
     if ROOT_MEMBER_NAME in normalized["Name"].values:
         normalized.loc[normalized["Name"] == ROOT_MEMBER_NAME, "Parent"] = ""
@@ -732,6 +737,29 @@ def refresh_from_sheet() -> None:
     st.rerun()
 
 
+def sanitize_editor_rows(df: pd.DataFrame) -> pd.DataFrame:
+    cleaned = df.copy()
+    footer_mask = (
+        cleaned.apply(
+            lambda row: row.astype(str).str.contains("Aktuelles Datum", case=False, na=False).any(),
+            axis=1,
+        )
+        if not cleaned.empty
+        else pd.Series(False, index=cleaned.index)
+    )
+    cleaned = cleaned.loc[~footer_mask].copy()
+
+    required_present = [column for column in REQUIRED_COLUMNS if column in cleaned.columns]
+    if required_present:
+        non_empty_mask = cleaned[required_present].apply(
+            lambda row: any(str(value).strip() not in {"", "nan", "none", "nat", "null"} for value in row),
+            axis=1,
+        )
+        cleaned = cleaned.loc[non_empty_mask].copy()
+
+    return cleaned.reset_index(drop=True)
+
+
 def render_editor_tab(df: pd.DataFrame) -> None:
     st.markdown("### ✏️ Edit Family Data")
     st.caption("Edit the provided dataset and save updates back to `family_data.csv`.")
@@ -776,13 +804,43 @@ def render_editor_tab(df: pd.DataFrame) -> None:
         editor_kwargs["num_rows"] = "dynamic"
     if supports_kwarg(st.data_editor, "use_container_width"):
         editor_kwargs["use_container_width"] = True
-    editor_df = st.data_editor(df, **editor_kwargs)
+    editor_input_df = sanitize_editor_rows(df)
+    editor_input_df["Generation"] = editor_input_df["Generation"].astype(str)
+    editor_input_df["Parent"] = editor_input_df["Parent"].astype(str)
+    editor_input_df["Generation"] = editor_input_df["Generation"].replace(
+        {"nan": "", "None": "", "NaT": ""}
+    )
+    editor_input_df["Parent"] = editor_input_df["Parent"].replace(
+        {"nan": "", "None": "", "NaT": ""}
+    )
+    try:
+        editor_df = st.data_editor(editor_input_df, **editor_kwargs)
+    except Exception as exc:  # StreamlitAPIException and similar editor rendering failures.
+        st.error(
+            "The data editor could not render the current values. "
+            "Please review Generation and Parent fields, then try again."
+        )
+        st.exception(exc)
+        editor_df = editor_input_df
 
     save_col, reset_col = st.columns([1, 5])
     with save_col:
         save_button_kwargs = {"type": "primary"} if supports_kwarg(st.button, "type") else {}
         if st.button("💾 Save changes", **save_button_kwargs):
-            save_data(editor_df)
+            save_df = sanitize_editor_rows(editor_df)
+            save_df["Generation"] = save_df["Generation"].astype(str).str.strip()
+            save_df["Parent"] = save_df["Parent"].astype(str).str.strip()
+            save_df["Generation"] = save_df["Generation"].replace(
+                {"nan": "", "None": "", "NaT": ""}
+            )
+            save_df["Parent"] = save_df["Parent"].replace({"nan": "", "None": "", "NaT": ""})
+            save_df["Generation"] = save_df["Generation"].apply(normalize_generation)
+            save_df["Parent"] = save_df["Parent"].apply(
+                lambda value: ""
+                if str(value).strip().lower() in {"", "none", "nan", "nat", "null"}
+                else str(value).strip()
+            )
+            save_data(save_df)
             st.success("Saved updates to family_data.csv.")
             st.rerun()
     with reset_col:
