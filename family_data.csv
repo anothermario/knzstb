@@ -1,0 +1,29 @@
+Generation,Branch,Birthdate,Name,Parent
+G2,WK,1944-03-05,Walter Künz,
+G3,HK,1963-04-28,Claudia Hermann,
+G3,RS,1964-02-24,Michael Schuch,
+G3,HK,1965-05-04,Ingeborg Künz,
+G3,HK,1966-07-04,Ulrike Huter,
+G3,WK,1968-01-06,Caroline Lanschützer-Künz,
+G3,RS,1968-07-04,Georg Schuch,
+G3,WK,1969-10-13,Angelika Hermann,
+G3,WK,1976-05-11,Marlene Eberle-Künz,
+G4,HK,1987-10-26,Daniel Hermann,
+G4,RS,1989-06-12,Lisa Schuch,Michael Schuch
+G4,HK,1990-05-22,Mathias Künz,
+G4,RS,1990-07-26,David Schuch,Michael Schuch
+G4,HK,1991-09-15,Julian Hermann,
+G4,RS,1993-10-03,Paul Schuch,Georg Schuch
+G4,RS,1996-04-07,Helena Schuch,Georg Schuch
+G4,RS,1998-04-01,Mira Schuch,Georg Schuch
+G4,WK,1999-02-19,Stefan Lanschützer,
+G4,WK,2000-03-22,Maria Hermann,
+G4,WK,2001-01-28,Theresa Lanschützer,
+G4,HK,2002-05-24,Katharina Huter,
+G4,WK,2002-09-10,Michael Hermann,
+G4,HK,2004-06-15,Maria Huter,
+G4,WK,2006-08-15,Julia Eberle,
+G4,WK,2008-12-01,Elisa Eberle,
+G5,HK,2018-08-28,Sophie Hermann,
+G5,HK,2021-07-14,Emilia Hermann,
+G5,RS,2022-12-28,Lotta Schuch,Lisa Schuch
