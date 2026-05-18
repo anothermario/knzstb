@@ -16,6 +16,12 @@ import pandas as pd
 import streamlit as st
 from streamlit_agraph import Config, Edge, Node, agraph
 
+try:
+    from streamlit.errors import StreamlitAPIException
+except Exception:  # pragma: no cover - compatibility fallback for older Streamlit versions.
+    class StreamlitAPIException(Exception):
+        pass
+
 CSV_PATH = Path(__file__).with_name("family_data.csv")
 LEGACY_CSV_PATH = Path(__file__).with_name("family_tree.csv")
 PROFILES_DIR = Path(__file__).parent / "assets" / "profiles"
@@ -737,6 +743,18 @@ def refresh_from_sheet() -> None:
     st.rerun()
 
 
+def normalize_nullable_text_series(series: pd.Series) -> pd.Series:
+    return (
+        series.astype(str)
+        .str.strip()
+        .apply(
+            lambda value: ""
+            if value.lower() in {"", "none", "nan", "nat", "null"}
+            else value
+        )
+    )
+
+
 def sanitize_editor_rows(df: pd.DataFrame) -> pd.DataFrame:
     cleaned = df.copy()
     footer_mask = (
@@ -752,7 +770,10 @@ def sanitize_editor_rows(df: pd.DataFrame) -> pd.DataFrame:
     required_present = [column for column in REQUIRED_COLUMNS if column in cleaned.columns]
     if required_present:
         non_empty_mask = cleaned[required_present].apply(
-            lambda row: any(str(value).strip() not in {"", "nan", "none", "nat", "null"} for value in row),
+            lambda row: any(
+                str(value).strip().lower() not in {"", "nan", "none", "nat", "null"}
+                for value in row
+            ),
             axis=1,
         )
         cleaned = cleaned.loc[non_empty_mask].copy()
@@ -805,17 +826,11 @@ def render_editor_tab(df: pd.DataFrame) -> None:
     if supports_kwarg(st.data_editor, "use_container_width"):
         editor_kwargs["use_container_width"] = True
     editor_input_df = sanitize_editor_rows(df)
-    editor_input_df["Generation"] = editor_input_df["Generation"].astype(str)
-    editor_input_df["Parent"] = editor_input_df["Parent"].astype(str)
-    editor_input_df["Generation"] = editor_input_df["Generation"].replace(
-        {"nan": "", "None": "", "NaT": ""}
-    )
-    editor_input_df["Parent"] = editor_input_df["Parent"].replace(
-        {"nan": "", "None": "", "NaT": ""}
-    )
+    editor_input_df["Generation"] = normalize_nullable_text_series(editor_input_df["Generation"])
+    editor_input_df["Parent"] = normalize_nullable_text_series(editor_input_df["Parent"])
     try:
         editor_df = st.data_editor(editor_input_df, **editor_kwargs)
-    except Exception as exc:  # StreamlitAPIException and similar editor rendering failures.
+    except (StreamlitAPIException, TypeError, ValueError) as exc:
         st.error(
             "The data editor could not render the current values. "
             "Please review Generation and Parent fields, then try again."
@@ -828,12 +843,8 @@ def render_editor_tab(df: pd.DataFrame) -> None:
         save_button_kwargs = {"type": "primary"} if supports_kwarg(st.button, "type") else {}
         if st.button("💾 Save changes", **save_button_kwargs):
             save_df = sanitize_editor_rows(editor_df)
-            save_df["Generation"] = save_df["Generation"].astype(str).str.strip()
-            save_df["Parent"] = save_df["Parent"].astype(str).str.strip()
-            save_df["Generation"] = save_df["Generation"].replace(
-                {"nan": "", "None": "", "NaT": ""}
-            )
-            save_df["Parent"] = save_df["Parent"].replace({"nan": "", "None": "", "NaT": ""})
+            save_df["Generation"] = normalize_nullable_text_series(save_df["Generation"])
+            save_df["Parent"] = normalize_nullable_text_series(save_df["Parent"])
             save_df["Generation"] = save_df["Generation"].apply(normalize_generation)
             save_df["Parent"] = save_df["Parent"].apply(
                 lambda value: ""
