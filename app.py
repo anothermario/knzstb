@@ -97,7 +97,10 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     normalized = normalized[REQUIRED_COLUMNS]
     normalized["Generation"] = (
-        pd.to_numeric(normalized["Generation"], errors="coerce").fillna(0).astype(int)
+        pd.to_numeric(normalized["Generation"], errors="coerce")
+        .fillna(1)
+        .clip(lower=1)
+        .astype(int)
     )
     normalized["Birthdate"] = pd.to_datetime(normalized["Birthdate"], errors="coerce")
 
@@ -123,7 +126,7 @@ def bootstrap_local_data() -> None:
         return
     try:
         df = read_remote_data(DEFAULT_DATA_URL)
-    except Exception:
+    except (URLError, OSError, ValueError, pd.errors.ParserError):
         return
     save_data(df)
 
@@ -205,7 +208,7 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config]:
                 shape="box",
                 size=24,
                 color=branch_color,
-                level=max(int(row["Generation"]), 1),
+                level=int(row["Generation"]),
                 borderWidth=2,
                 font={"color": "#ffffff", "face": "Inter", "size": 18},
                 margin=14,
@@ -271,7 +274,7 @@ def render_profile_card(member: pd.Series | None) -> None:
             unsafe_allow_html=True,
         )
         st.write(f"**Birthdate:** {format_birthdate(member['Birthdate'])}")
-        st.write(f"**Current Age:** {age if age is not None else 'Unknown'}")
+        st.write(f"**Age:** {age if age is not None else 'Unknown'}")
         st.write(f"**Parent:** {member['Parent'] or '—'}")
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -307,7 +310,9 @@ def render_tree_tab(df: pd.DataFrame) -> None:
     with col_filter:
         branch_filter = st.selectbox("Filter by branch", branches)
     with col_gen:
-        generations = sorted(int(gen) for gen in df["Generation"].unique().tolist() if gen)
+        generations = sorted(
+            int(gen) for gen in df["Generation"].unique().tolist() if pd.notna(gen)
+        )
         generation_filter = st.multiselect(
             "Filter by generation",
             generations,
@@ -340,10 +345,10 @@ def render_tree_tab(df: pd.DataFrame) -> None:
 
         nodes, edges, config = build_graph(filtered)
         clicked = agraph(nodes=nodes, edges=edges, config=config)
-        if clicked:
-            st.session_state["selected_member"] = (
-                clicked.get("id") if isinstance(clicked, dict) else clicked
-            )
+        if isinstance(clicked, dict) and clicked.get("id"):
+            st.session_state["selected_member"] = clicked["id"]
+        elif isinstance(clicked, str):
+            st.session_state["selected_member"] = clicked
 
     with profile_col:
         selected_name = ensure_selected_member(df)
@@ -390,8 +395,11 @@ def refresh_from_sheet() -> None:
     except pd.errors.ParserError:
         st.error("The Google Sheet data could not be parsed as CSV.")
         return
-    except (OSError, ValueError):
-        st.error("The configured Google Sheet URL is invalid or returned unsupported data.")
+    except ValueError:
+        st.error("The configured Google Sheet URL is invalid.")
+        return
+    except OSError:
+        st.error("A local file error prevented saving data from the Google Sheet.")
         return
     save_data(remote_df)
     st.success("Reloaded local data from the provided Google Sheet.")
