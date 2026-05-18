@@ -357,7 +357,7 @@ def get_ancestors(df: pd.DataFrame, names: Iterable[str]) -> set[str]:
     collected = set(names)
     for name in list(names):
         parent = parents.get(name, "")
-        while parent:
+        while parent and parent != name:
             if parent in collected:
                 break
             collected.add(parent)
@@ -579,8 +579,6 @@ def render_tree_tab(df: pd.DataFrame) -> None:
         filtered = filtered[filtered["Name"].isin(get_ancestors(df, names))]
     if generation_filter:
         filtered = filtered[filtered["Generation"].isin(generation_filter)]
-    else:
-        filtered = filtered.iloc[0:0]
 
     if filtered.empty:
         st.info("No members match the current filters.")
