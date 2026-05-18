@@ -8,7 +8,7 @@ import os
 import re
 from datetime import date
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 from urllib.error import URLError
 
 import pandas as pd
@@ -402,7 +402,7 @@ def build_branch_colors(branches: Iterable[str]) -> dict[str, str]:
     return colors
 
 
-def safe_text(value, default: str = "") -> str:
+def safe_text(value: Any, default: str = "") -> str:
     if pd.isna(value):
         return default
     text = str(value).strip()
@@ -724,12 +724,14 @@ def render_editor_tab(df: pd.DataFrame) -> None:
         try:
             return st.column_config.TextColumn(label, required=required)
         except TypeError:
+            # Streamlit compatibility: older versions don't support "required".
             return st.column_config.TextColumn(label)
 
     def date_column(label: str):
         try:
             return st.column_config.DateColumn(label, format="YYYY-MM-DD")
         except TypeError:
+            # Streamlit compatibility: older versions don't support "format".
             return st.column_config.DateColumn(label)
 
     editor_df = st.data_editor(
