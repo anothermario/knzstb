@@ -506,14 +506,18 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[
         directed=True,
         physics=False,
         hierarchical=True,
-        levelSeparation=180,
-        nodeSpacing=210,
-        treeSpacing=240,
-        direction="UD",
-        sortMethod="directed",
-        fit=True,
-        highlightColor="#111827",
     )
+    config.layout["hierarchical"].update(
+        {
+            "levelSeparation": 180,
+            "nodeSpacing": 210,
+            "treeSpacing": 240,
+            "direction": "UD",
+            "sortMethod": "directed",
+        }
+    )
+    config.physics["stabilization"]["fit"] = True
+    config.groups = {}
     return nodes, edges, config, branch_colors
 
 
