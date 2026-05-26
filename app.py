@@ -7,7 +7,7 @@ import html
 import inspect
 import os
 import re
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.error import URLError
@@ -336,7 +336,11 @@ def save_data(df: pd.DataFrame) -> None:
 
 
 def format_birthdate_for_csv(value: Any) -> str:
-    return value.strftime("%Y-%m-%d") if pd.notna(value) and hasattr(value, "strftime") else ""
+    if pd.isna(value):
+        return ""
+    if not isinstance(value, (pd.Timestamp, date, datetime)):
+        return ""
+    return value.strftime("%Y-%m-%d")
 
 
 def compute_age(birthdate: pd.Timestamp | date | None) -> int | None:
@@ -745,7 +749,8 @@ def render_stats_tab(df: pd.DataFrame) -> None:
 
 
 def refresh_from_sheet(url: str | None = None) -> None:
-    data_url = (url or "").strip() or configured_data_url()
+    cleaned_url = (url or "").strip()
+    data_url = cleaned_url if cleaned_url else configured_data_url()
     if not data_url:
         st.warning("Enter and save a Google Sheet URL to enable Google Sheet refresh.")
         return
@@ -828,7 +833,10 @@ def render_editor_tab(df: pd.DataFrame) -> None:
             try:
                 save_data_url(data_url_value)
             except OSError:
-                st.error("The data source URL could not be saved locally.")
+                st.error(
+                    "Could not save URL to family_data_url.txt. "
+                    "Check file permissions and disk space."
+                )
             else:
                 if data_url_value.strip():
                     st.success("Saved data source URL.")
