@@ -28,7 +28,7 @@ knzstb/
 | **Profile Card** | Selecting a node opens a centered profile card with a large circular portrait plus age, branch, birthdate, and parent |
 | **Image Handling** | Loads `assets/profiles/[Name].jpg` (or `.jpeg`/`.png`); falls back to a gray initials avatar |
 | **Dynamic Age** | Calculates current age from `Birthdate` using today’s date |
-| **Data Editor** | `st.data_editor` table — edit and save changes back to `family_data.csv`, or reset from the provided Google Sheet |
+| **Data Editor** | `st.data_editor` table — edit and save changes back to `family_data.csv`, set/save a Google Sheet URL, reload from it, and export the current CSV |
 | **Statistics** | Member counts per generation and per branch, with bar charts |
 | **Modern UI** | Custom CSS: light sidebar, high-contrast cards, rounded avatars, and dark readable text |
 
@@ -59,13 +59,16 @@ The required columns are:
 
 ### 3 — Optional: connect a Google Sheet reset source
 
-If you want the **Reload from Google Sheet** button to work, set:
+In the **Data Editor** tab, paste your Google Sheet URL into **Google Sheet / CSV URL** and click **Save URL**.  
+The app stores it in `family_data_url.txt` and uses it for **Reload from Google Sheet**.
+
+You can still preconfigure a default URL via environment variable:
 
 ```bash
 export FAMILY_TREE_DATA_URL="https://docs.google.com/spreadsheets/d/.../edit?usp=sharing"
 ```
 
-The app will convert the edit URL to CSV export format automatically.
+The app converts Google Sheet edit URLs to CSV export format automatically.
 
 ### 4 — Add profile photos *(optional)*
 
@@ -95,7 +98,7 @@ Open your browser at **http://localhost:8501**
 3. **Click profiles** — select a node in the tree to review the current profile card.
 4. **Review hierarchy** — confirm `Parent` values are correct because the tree layout is built from `Name` → `Parent`.
 5. **Save & reload** — click *Save Changes* in the editor; Streamlit hot-reloads automatically.
-6. **Reset if needed** — use *Reload from Google Sheet* to re-initialize the local CSV from `FAMILY_TREE_DATA_URL`.
+6. **Reset if needed** — save a URL in *Google Sheet / CSV URL*, then use *Reload from Google Sheet* to re-initialize local CSV data.
 7. **Log changes** — commit your edits with a descriptive message so nothing is forgotten.
 
 ---

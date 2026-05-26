@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover - compatibility fallback for older Strea
 
 CSV_PATH = Path(__file__).with_name("family_data.csv")
 LEGACY_CSV_PATH = Path(__file__).with_name("family_tree.csv")
+DATA_URL_PATH = Path(__file__).with_name("family_data_url.txt")
 PROFILES_DIR = Path(__file__).parent / "assets" / "profiles"
 DEFAULT_DATA_URL = os.getenv("FAMILY_TREE_DATA_URL", "").strip()
 APP_TITLE = os.getenv("FAMILY_TREE_TITLE", "Family Tree").strip() or "Family Tree"
@@ -196,6 +197,28 @@ def to_export_csv_url(url: str) -> str:
     return url
 
 
+def load_saved_data_url() -> str:
+    if not DATA_URL_PATH.exists():
+        return ""
+    try:
+        return DATA_URL_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def configured_data_url() -> str:
+    saved_url = load_saved_data_url()
+    return saved_url or DEFAULT_DATA_URL
+
+
+def save_data_url(url: str) -> None:
+    cleaned = url.strip()
+    if cleaned:
+        DATA_URL_PATH.write_text(f"{cleaned}\n", encoding="utf-8")
+    elif DATA_URL_PATH.exists():
+        DATA_URL_PATH.unlink()
+
+
 def normalize_generation(value) -> str:
     if pd.isna(value):
         return ""
@@ -284,10 +307,11 @@ def bootstrap_local_data() -> None:
     if LEGACY_CSV_PATH.exists() and LEGACY_CSV_PATH.stat().st_size > 0:
         save_data(pd.read_csv(LEGACY_CSV_PATH))
         return
-    if not DEFAULT_DATA_URL:
+    data_url = configured_data_url()
+    if not data_url:
         return
     try:
-        df = read_remote_data(DEFAULT_DATA_URL)
+        df = read_remote_data(data_url)
     except (URLError, OSError, ValueError, pd.errors.ParserError):
         return
     save_data(df)
@@ -298,18 +322,21 @@ def load_data() -> pd.DataFrame:
     bootstrap_local_data()
     if CSV_PATH.exists():
         return normalize_dataframe(pd.read_csv(CSV_PATH))
-    if not DEFAULT_DATA_URL:
+    data_url = configured_data_url()
+    if not data_url:
         return normalize_dataframe(pd.DataFrame(columns=REQUIRED_COLUMNS))
-    return read_remote_data(DEFAULT_DATA_URL)
+    return read_remote_data(data_url)
 
 
 def save_data(df: pd.DataFrame) -> None:
     output = normalize_dataframe(df)
-    output["Birthdate"] = output["Birthdate"].apply(
-        lambda value: value.strftime("%Y-%m-%d") if pd.notna(value) else ""
-    )
+    output["Birthdate"] = output["Birthdate"].apply(format_birthdate_for_csv)
     output.to_csv(CSV_PATH, index=False)
     st.cache_data.clear()
+
+
+def format_birthdate_for_csv(value: Any) -> str:
+    return value.strftime("%Y-%m-%d") if pd.notna(value) and hasattr(value, "strftime") else ""
 
 
 def compute_age(birthdate: pd.Timestamp | date | None) -> int | None:
@@ -717,15 +744,16 @@ def render_stats_tab(df: pd.DataFrame) -> None:
         st.bar_chart(branch_counts)
 
 
-def refresh_from_sheet() -> None:
-    if not DEFAULT_DATA_URL:
-        st.warning("Set `FAMILY_TREE_DATA_URL` to enable Google Sheet refresh.")
+def refresh_from_sheet(url: str | None = None) -> None:
+    data_url = (url or "").strip() or configured_data_url()
+    if not data_url:
+        st.warning("Enter and save a Google Sheet URL to enable Google Sheet refresh.")
         return
     try:
-        remote_df = read_remote_data(DEFAULT_DATA_URL)
+        remote_df = read_remote_data(data_url)
     except URLError:
         st.error(
-            f"Could not reach the Google Sheet at {DEFAULT_DATA_URL}. "
+            f"Could not reach the Google Sheet at {data_url}. "
             "Check network access and try again."
         )
         return
@@ -785,15 +813,44 @@ def render_editor_tab(df: pd.DataFrame) -> None:
     st.markdown("### ✏️ Edit Family Data")
     st.caption("Edit the provided dataset and save updates back to `family_data.csv`.")
 
-    action_col, info_col = st.columns([1, 3])
+    if "data_source_url_input" not in st.session_state:
+        st.session_state["data_source_url_input"] = configured_data_url()
+
+    data_url_value = st.text_input(
+        "Google Sheet / CSV URL",
+        key="data_source_url_input",
+        placeholder="https://docs.google.com/spreadsheets/d/.../edit?usp=sharing",
+    )
+
+    action_col, reload_col, info_col = st.columns([1, 1, 3])
     with action_col:
+        if st.button("Save URL"):
+            try:
+                save_data_url(data_url_value)
+            except OSError:
+                st.error("The data source URL could not be saved locally.")
+            else:
+                if data_url_value.strip():
+                    st.success("Saved data source URL.")
+                else:
+                    st.success("Cleared saved data source URL.")
+    with reload_col:
         if st.button("Reload from Google Sheet"):
-            refresh_from_sheet()
+            refresh_from_sheet(data_url_value)
     with info_col:
         st.caption(
-            "Uses the Google Sheet from `FAMILY_TREE_DATA_URL` as a reset source, "
-            "then writes the result to `family_data.csv` for local editing."
+            "Saves the URL locally in `family_data_url.txt`; the reload button uses this URL "
+            "to refresh `family_data.csv`."
         )
+
+    export_df = normalize_dataframe(df.copy())
+    export_df["Birthdate"] = export_df["Birthdate"].apply(format_birthdate_for_csv)
+    st.download_button(
+        "⬇️ Export current CSV",
+        data=export_df.to_csv(index=False),
+        file_name="family_data.csv",
+        mime="text/csv",
+    )
 
     def text_column(label: str, required: bool = False):
         try:
