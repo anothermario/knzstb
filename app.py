@@ -8,6 +8,7 @@ import inspect
 import json
 import os
 import re
+import unicodedata
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterable
@@ -45,6 +46,8 @@ AVATAR_PALETTE = ["#1d4ed8", "#7c3aed", "#be123c", "#0891b2", "#15803d", "#b4530
 ROOT_MEMBER_NAME = "Hans Künz"
 NULL_LIKE_TEXT_VALUES = {"", "none", "nan", "nat", "null"}
 EDITOR_FOOTER_MARKER = "Aktuelles Datum"
+SUPPORTED_IMAGE_EXTENSIONS = ("jpg", "jpeg", "png")
+PROFILE_CHAR_REPLACEMENTS = {"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"}
 
 st.set_page_config(
     page_title="Family Tree",
@@ -441,6 +444,38 @@ def image_file_to_data_uri(path: Path) -> str:
     return f"data:{media_type};base64,{encoded}"
 
 
+def normalize_profile_key(value: str) -> str:
+    """Normalize a member/image name for tolerant portrait filename matching."""
+    text = str(value).strip()
+    for source, target in PROFILE_CHAR_REPLACEMENTS.items():
+        text = text.replace(source, target).replace(source.upper(), target.upper())
+    text = (
+        unicodedata.normalize("NFKD", text)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .lower()
+    )
+    return re.sub(r"[^a-z0-9]+", "", text)
+
+
+def find_profile_image_path(name: str) -> Path | None:
+    """Return the portrait path for *name*, matching exact and normalized filenames."""
+    for ext in SUPPORTED_IMAGE_EXTENSIONS:
+        exact_path = PROFILES_DIR / f"{name}.{ext}"
+        if exact_path.exists():
+            return exact_path
+
+    normalized_name = normalize_profile_key(name)
+    if not normalized_name or not PROFILES_DIR.exists():
+        return None
+
+    for path in PROFILES_DIR.iterdir():
+        if path.is_file() and path.suffix.lower().lstrip(".") in SUPPORTED_IMAGE_EXTENSIONS:
+            if normalize_profile_key(path.stem) == normalized_name:
+                return path
+    return None
+
+
 def fallback_avatar_data_uri(name: str) -> str:
     initials = html.escape(build_initials(name))
     color = AVATAR_PALETTE[sum(ord(char) for char in name) % len(AVATAR_PALETTE)]
@@ -456,12 +491,10 @@ def fallback_avatar_data_uri(name: str) -> str:
     encoded = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
     return f"data:image/svg+xml;base64,{encoded}"
 
-
 def profile_image_data_uri(name: str) -> str:
-    for ext in ("jpg", "jpeg", "png"):
-        path = PROFILES_DIR / f"{name}.{ext}"
-        if path.exists():
-            return image_file_to_data_uri(path)
+    image_path = find_profile_image_path(name)
+    if image_path is not None:
+        return image_file_to_data_uri(image_path)
     return fallback_avatar_data_uri(name)
 
 
@@ -567,10 +600,8 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[
             Node(
                 id=member_name,
                 label=label,
-                title=(
-                    f"{member_name} • {format_birthdate(row['Birthdate'])} • "
-                    f"{branch}"
-                ),
+                # streamlit-agraph opens node.div.innerHTML on double-click; keep it empty.
+                div={"innerHTML": ""},
                 shape="circularImage",
                 image=profile_image_data_uri(member_name),
                 size=40,
@@ -628,9 +659,13 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[
 
 def ensure_selected_member(df: pd.DataFrame) -> str | None:
     names = df["Name"].tolist()
+    st.session_state.setdefault("last_graph_click", None)
     selected = st.session_state.get("selected_member")
     if selected not in names:
         st.session_state["selected_member"] = names[0] if names else None
+    sidebar_selected = st.session_state.get("sidebar_selected_member")
+    if sidebar_selected not in names:
+        st.session_state["sidebar_selected_member"] = st.session_state.get("selected_member")
     return st.session_state.get("selected_member")
 
 
@@ -688,13 +723,13 @@ def save_profile_image(name: str, uploaded_file) -> Path:
     """
     PROFILES_DIR.mkdir(parents=True, exist_ok=True)
     # Remove existing portraits for this member (any supported extension).
-    for ext in ("jpg", "jpeg", "png"):
+    for ext in SUPPORTED_IMAGE_EXTENSIONS:
         old_path = PROFILES_DIR / f"{name}.{ext}"
         if old_path.exists():
             old_path.unlink()
     # Determine extension from the uploaded file name; default to jpg.
     suffix = Path(uploaded_file.name).suffix.lower()
-    if suffix not in (".jpg", ".jpeg", ".png"):
+    if suffix.lstrip(".") not in SUPPORTED_IMAGE_EXTENSIONS:
         suffix = ".jpg"
     dest = PROFILES_DIR / f"{name}{suffix}"
     dest.write_bytes(uploaded_file.read())
@@ -710,11 +745,10 @@ def render_sidebar(df: pd.DataFrame) -> None:
         selected_name: str | None = None
         if names:
             selected_name = ensure_selected_member(df)
-            selected_index = names.index(selected_name) if selected_name in names else 0
             selected = st.selectbox(
                 "Choose a family member",
                 names,
-                index=selected_index,
+                key="sidebar_selected_member",
             )
             st.session_state["selected_member"] = selected
             selected_name = selected
@@ -828,11 +862,24 @@ def render_tree_tab(df: pd.DataFrame) -> None:
     st.markdown("<div class='tree-panel'>", unsafe_allow_html=True)
     clicked = agraph(nodes=nodes, edges=edges, config=config)
     st.markdown("</div>", unsafe_allow_html=True)
+    known_names = set(df["Name"].tolist())
 
+    clicked_name = None
     if isinstance(clicked, dict) and clicked.get("id"):
-        st.session_state["selected_member"] = clicked["id"]
+        clicked_name = clicked["id"]
     elif isinstance(clicked, str):
-        st.session_state["selected_member"] = clicked
+        clicked_name = clicked
+
+    # streamlit-agraph can repeat the same click value across re-runs; skip duplicates.
+    if (
+        clicked_name in known_names
+        and clicked_name != st.session_state.get("last_graph_click")
+        and clicked_name != st.session_state.get("selected_member")
+    ):
+        st.session_state["last_graph_click"] = clicked_name
+        st.session_state["selected_member"] = clicked_name
+        st.session_state["sidebar_selected_member"] = clicked_name
+        st.rerun()
 
     selected_name = ensure_selected_member(df)
     selected_member = (
