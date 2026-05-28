@@ -663,11 +663,7 @@ def ensure_selected_member(df: pd.DataFrame) -> str | None:
         st.session_state["selected_member"] = names[0] if names else None
     sidebar_selected = st.session_state.get("sidebar_selected_member")
     if sidebar_selected not in names:
-        st.session_state["sidebar_selected_member"] = (
-            st.session_state.get("selected_member") if names else None
-        )
-    if st.session_state.get("sidebar_selected_member") not in names:
-        st.session_state["sidebar_selected_member"] = names[0] if names else None
+        st.session_state["sidebar_selected_member"] = st.session_state.get("selected_member")
     return st.session_state.get("selected_member")
 
 
