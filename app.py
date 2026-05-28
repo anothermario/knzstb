@@ -661,8 +661,13 @@ def ensure_selected_member(df: pd.DataFrame) -> str | None:
     selected = st.session_state.get("selected_member")
     if selected not in names:
         st.session_state["selected_member"] = names[0] if names else None
+    sidebar_selected = st.session_state.get("sidebar_selected_member")
+    if sidebar_selected not in names:
+        st.session_state["sidebar_selected_member"] = (
+            st.session_state.get("selected_member") if names else None
+        )
     if st.session_state.get("sidebar_selected_member") not in names:
-        st.session_state["sidebar_selected_member"] = st.session_state.get("selected_member")
+        st.session_state["sidebar_selected_member"] = names[0] if names else None
     return st.session_state.get("selected_member")
 
 
@@ -868,7 +873,11 @@ def render_tree_tab(df: pd.DataFrame) -> None:
         clicked_name = clicked
 
     # streamlit-agraph can repeat the same click value across reruns; skip duplicates.
-    if clicked_name in known_names and clicked_name != st.session_state.get("last_graph_click"):
+    if (
+        clicked_name in known_names
+        and clicked_name != st.session_state.get("last_graph_click")
+        and clicked_name != st.session_state.get("selected_member")
+    ):
         st.session_state["last_graph_click"] = clicked_name
         st.session_state["selected_member"] = clicked_name
         st.session_state["sidebar_selected_member"] = clicked_name
