@@ -488,7 +488,6 @@ def fallback_avatar_data_uri(name: str) -> str:
     return f"data:image/svg+xml;base64,{encoded}"
 
 def profile_image_data_uri(name: str) -> str:
-def profile_image_data_uri(name: str) -> str:
     image_path = find_profile_image_path(name)
     if image_path is not None:
         return image_file_to_data_uri(image_path)
@@ -739,11 +738,9 @@ def render_sidebar(df: pd.DataFrame) -> None:
         selected_name: str | None = None
         if names:
             selected_name = ensure_selected_member(df)
-            selected_index = names.index(selected_name) if selected_name in names else 0
             selected = st.selectbox(
                 "Choose a family member",
                 names,
-                index=selected_index,
                 key="sidebar_selected_member",
             )
             st.session_state["selected_member"] = selected
