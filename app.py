@@ -317,7 +317,9 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     parents = dict(zip(normalized["Name"], normalized["Parent"]))
     normalized = normalized.assign(
         _generation_sort=normalized["Generation"].apply(generation_sort_key),
-        _hierarchy_sort=normalized["Name"].apply(lambda name: hierarchy_sort_key(name, parents)),
+        _hierarchy_sort=normalized["Name"].apply(
+            lambda name: (hierarchy_sort_key(name, parents)[0], parents.get(name, ""))
+        ),
     )
     normalized = normalized.sort_values(
         by=["_generation_sort", "_hierarchy_sort", "Branch", "Birthdate", "Name"],
