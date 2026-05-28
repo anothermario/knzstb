@@ -870,7 +870,7 @@ def render_tree_tab(df: pd.DataFrame) -> None:
     elif isinstance(clicked, str):
         clicked_name = clicked
 
-    # streamlit-agraph can repeat the same click value across reruns; skip duplicates.
+    # streamlit-agraph can repeat the same click value across re-runs; skip duplicates.
     if (
         clicked_name in known_names
         and clicked_name != st.session_state.get("last_graph_click")
