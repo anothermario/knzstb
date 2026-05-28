@@ -680,12 +680,34 @@ def render_profile_card(member: pd.Series | None) -> None:
     st.markdown(card_html, unsafe_allow_html=True)
 
 
+def save_profile_image(name: str, uploaded_file) -> Path:
+    """Save *uploaded_file* to PROFILES_DIR as ``{name}.{ext}``.
+
+    Any previous profile image for *name* is removed first.
+    Returns the path of the newly saved file.
+    """
+    PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+    # Remove existing portraits for this member (any supported extension).
+    for ext in ("jpg", "jpeg", "png"):
+        old_path = PROFILES_DIR / f"{name}.{ext}"
+        if old_path.exists():
+            old_path.unlink()
+    # Determine extension from the uploaded file name; default to jpg.
+    suffix = Path(uploaded_file.name).suffix.lower()
+    if suffix not in (".jpg", ".jpeg", ".png"):
+        suffix = ".jpg"
+    dest = PROFILES_DIR / f"{name}{suffix}"
+    dest.write_bytes(uploaded_file.read())
+    return dest
+
+
 def render_sidebar(df: pd.DataFrame) -> None:
     with st.sidebar:
         st.markdown("## Family Navigator")
         st.caption("Light, high-contrast navigation for quick member selection.")
         names = sorted(df["Name"].tolist())
 
+        selected_name: str | None = None
         if names:
             selected_name = ensure_selected_member(df)
             selected_index = names.index(selected_name) if selected_name in names else 0
@@ -695,6 +717,7 @@ def render_sidebar(df: pd.DataFrame) -> None:
                 index=selected_index,
             )
             st.session_state["selected_member"] = selected
+            selected_name = selected
         else:
             st.selectbox(
                 "Choose a family member",
@@ -702,12 +725,41 @@ def render_sidebar(df: pd.DataFrame) -> None:
                 disabled=True,
             )
 
-        st.markdown("---")
-        st.markdown("### Photos")
-        st.caption(
-            f"Add portraits in `{PROFILES_DIR.as_posix()}` as `[Name].jpg`. "
-            "Missing photos automatically render as gray initial badges."
-        )
+        # ── Profile panel ──────────────────────────────────────────────────
+        if selected_name and selected_name in df["Name"].values:
+            member = df.loc[df["Name"] == selected_name].iloc[0]
+            st.markdown("---")
+            st.markdown("### 👤 Profile")
+            avatar_uri = profile_image_data_uri(selected_name)
+            st.markdown(
+                f"<img src='{avatar_uri}' style='width:100%;border-radius:12px;"
+                "border:2px solid #d1d5db;margin-bottom:0.5rem;' />",
+                unsafe_allow_html=True,
+            )
+            gen = safe_text(member["Generation"], "—")
+            branch = safe_text(member["Branch"], "—")
+            bd = format_birthdate(member["Birthdate"])
+            parent = safe_text(member["Parent"], "—")
+            st.markdown(
+                f"**{html.escape(selected_name)}**  \n"
+                f"🌿 {html.escape(gen)} · {html.escape(branch)}  \n"
+                f"🎂 {html.escape(bd)}  \n"
+                f"👪 {html.escape(parent)}"
+            )
+
+            # ── Photo upload ───────────────────────────────────────────────
+            st.markdown("#### 📷 Upload portrait")
+            uploaded = st.file_uploader(
+                f"Photo for {selected_name}",
+                type=["jpg", "jpeg", "png"],
+                key=f"photo_upload_{selected_name}",
+                label_visibility="collapsed",
+            )
+            if uploaded is not None:
+                dest = save_profile_image(selected_name, uploaded)
+                st.cache_data.clear()
+                st.success(f"Saved as `{dest.name}`")
+                st.rerun()
 
         st.markdown("---")
         st.markdown("### Data source")
