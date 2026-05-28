@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import html
 import inspect
 import json
 import os
 import re
+import secrets
 import unicodedata
 from datetime import date, datetime
 from pathlib import Path
@@ -32,6 +34,29 @@ DATA_URL_PATH = Path(__file__).with_name("family_data_url.txt")
 PROFILES_DIR = Path(__file__).parent / "assets" / "profiles"
 DEFAULT_DATA_URL = os.getenv("FAMILY_TREE_DATA_URL", "").strip()
 APP_TITLE = os.getenv("FAMILY_TREE_TITLE", "Family Tree").strip() or "Family Tree"
+LOGIN_USERNAME = os.getenv("FAMILY_TREE_USERNAME", "knzstb").strip()
+if not LOGIN_USERNAME:
+    LOGIN_USERNAME = "knzstb"
+
+LOGIN_PASSWORD_SALT_HEX = os.getenv(
+    "FAMILY_TREE_PASSWORD_SALT_HEX",
+    "4c6f67696e53616c7432303236",
+).strip()
+if not LOGIN_PASSWORD_SALT_HEX:
+    LOGIN_PASSWORD_SALT_HEX = "4c6f67696e53616c7432303236"
+
+_password_iterations_env = os.getenv("FAMILY_TREE_PASSWORD_ITERATIONS", "390000").strip()
+try:
+    LOGIN_PASSWORD_ITERATIONS = int(_password_iterations_env) if _password_iterations_env else 390000
+except ValueError:
+    LOGIN_PASSWORD_ITERATIONS = 390000
+
+LOGIN_PASSWORD_HASH = os.getenv(
+    "FAMILY_TREE_PASSWORD_HASH",
+    "42e945b2105e63447d967910eb9ab73634da88ea7a802d4ac1dd08824c23c638",
+).strip()
+if not LOGIN_PASSWORD_HASH:
+    LOGIN_PASSWORD_HASH = "42e945b2105e63447d967910eb9ab73634da88ea7a802d4ac1dd08824c23c638"
 REQUIRED_COLUMNS = ["Generation", "Branch", "Birthdate", "Name", "Parent"]
 BRANCH_PALETTE = [
     "#0f766e",
@@ -673,52 +698,6 @@ def ensure_selected_member(df: pd.DataFrame) -> str | None:
     return st.session_state.get("selected_member")
 
 
-def render_profile_card(member: pd.Series | None) -> None:
-    st.markdown("### 👤 Profile Card")
-    if member is None:
-        st.info("Select a family member to open the profile card.")
-        return
-
-    age = compute_age(member["Birthdate"])
-    name = safe_text(member["Name"], "Unknown")
-    generation = safe_text(member["Generation"], "Generation unknown")
-    branch = safe_text(member["Branch"], "Unassigned branch")
-    parent = safe_text(member["Parent"], "—")
-    card_html = f"""
-    <div class="profile-card">
-      <img
-        class="profile-avatar"
-        src="{profile_image_data_uri(name)}"
-        alt="{html.escape(name)}"
-      />
-      <h2 class="profile-name">{html.escape(name)}</h2>
-      <p class="profile-subtitle">
-        {html.escape(generation)} ·
-        {html.escape(branch)}
-      </p>
-      <div class="profile-grid">
-        <div class="profile-detail">
-          <span class="profile-detail-label">Age</span>
-          <span class="profile-detail-value">{age if age is not None else 'Unknown'}</span>
-        </div>
-        <div class="profile-detail">
-          <span class="profile-detail-label">Branch</span>
-          <span class="profile-detail-value">{html.escape(branch)}</span>
-        </div>
-        <div class="profile-detail">
-          <span class="profile-detail-label">Birthdate</span>
-          <span class="profile-detail-value">{html.escape(format_birthdate(member['Birthdate']))}</span>
-        </div>
-        <div class="profile-detail">
-          <span class="profile-detail-label">Parent</span>
-          <span class="profile-detail-value">{html.escape(parent)}</span>
-        </div>
-      </div>
-    </div>
-    """
-    st.markdown(card_html, unsafe_allow_html=True)
-
-
 def save_profile_image(name: str, uploaded_file) -> Path:
     """Save *uploaded_file* to PROFILES_DIR as ``{name}.{ext}``.
 
@@ -884,18 +863,6 @@ def render_tree_tab(df: pd.DataFrame) -> None:
         st.session_state["selected_member"] = clicked_name
         st.session_state["pending_sidebar_selected_member"] = clicked_name
         st.rerun()
-
-    selected_name = ensure_selected_member(df)
-    selected_member = (
-        df.loc[df["Name"] == selected_name].iloc[0]
-        if selected_name in df["Name"].values
-        else None
-    )
-
-    _, profile_col, _ = st.columns([1, 1.8, 1])
-    with profile_col:
-        render_profile_card(selected_member)
-
 
 def render_stats_tab(df: pd.DataFrame) -> None:
     st.markdown("### 📊 Family Statistics")
@@ -1119,7 +1086,33 @@ def render_editor_tab(df: pd.DataFrame) -> None:
             st.rerun()
 
 
+def require_login() -> None:
+    if st.session_state.get("authenticated", False):
+        return
+
+    st.markdown("## 🔐 Login")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        username_ok = secrets.compare_digest(username.strip(), LOGIN_USERNAME)
+        password_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            bytes.fromhex(LOGIN_PASSWORD_SALT_HEX),
+            LOGIN_PASSWORD_ITERATIONS,
+        ).hex()
+        password_ok = secrets.compare_digest(password_hash, LOGIN_PASSWORD_HASH)
+        if username_ok and password_ok:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Invalid username or password.")
+
+    st.stop()
+
+
 def main() -> None:
+    require_login()
     df = load_data()
     before_count = len(df)
     df = df.dropna(subset=["Name", "Generation"])
