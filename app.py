@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import html
 import inspect
+import json
 import os
 import re
 from datetime import date, datetime
@@ -328,6 +329,62 @@ def load_data() -> pd.DataFrame:
     return read_remote_data(data_url)
 
 
+def _extract_spreadsheet_id(url: str) -> str | None:
+    """Return the spreadsheet ID embedded in a Google Sheets URL, or None."""
+    match = re.search(r"/spreadsheets/d/([a-zA-Z0-9\-_]+)", url)
+    return match.group(1) if match else None
+
+
+def _gsheets_client():
+    """Return an authenticated gspread client using GOOGLE_SERVICE_ACCOUNT_JSON, or None."""
+    creds_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+    if not creds_json:
+        return None
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+
+        creds_dict = json.loads(creds_json)
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        return gspread.authorize(creds)
+    except Exception:
+        return None
+
+
+def push_to_google_sheets(df: pd.DataFrame) -> bool:
+    """Write *df* to the first worksheet of the configured Google Sheet.
+
+    Returns True on success, False if credentials or URL are not configured.
+    Raises on API errors so callers can surface them to the user.
+    """
+    data_url = configured_data_url()
+    spreadsheet_id = _extract_spreadsheet_id(data_url) if data_url else None
+    if not spreadsheet_id:
+        return False
+    client = _gsheets_client()
+    if client is None:
+        return False
+    output = df.copy()
+    output["Birthdate"] = output["Birthdate"].apply(format_birthdate_for_csv)
+    spreadsheet = client.open_by_key(spreadsheet_id)
+    worksheet = spreadsheet.get_worksheet(0)
+    worksheet.clear()
+    rows = [output.columns.tolist()] + output.values.tolist()
+    # gspread expects plain strings/numbers; convert everything
+    rows = [[str(cell) if cell is not None else "" for cell in row] for row in rows]
+    worksheet.update(rows)
+    return True
+
+
+def google_sheets_configured() -> bool:
+    """Return True when both a spreadsheet URL and service-account credentials are present."""
+    data_url = configured_data_url()
+    if not data_url or not _extract_spreadsheet_id(data_url):
+        return False
+    return bool(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip())
+
+
 def save_data(df: pd.DataFrame) -> None:
     output = normalize_dataframe(df)
     output["Birthdate"] = output["Birthdate"].apply(format_birthdate_for_csv)
@@ -444,6 +501,22 @@ def build_hierarchy_levels(df: pd.DataFrame) -> dict[str, int]:
 
     for member_name in df["Name"]:
         resolve(member_name, set())
+
+    # Place orphan nodes (no valid parent, not the root) below the deepest tree node
+    # so they appear at the bottom rather than floating at the top.
+    connected_levels = [
+        lvl
+        for name, lvl in levels.items()
+        if parents.get(name, "") or name == ROOT_MEMBER_NAME
+    ]
+    bottom_level = (max(connected_levels) + 1) if connected_levels else 2
+    for name in list(levels):
+        parent = parents.get(name, "")
+        is_root = name == ROOT_MEMBER_NAME
+        is_orphan = not is_root and (not parent or parent not in known_names)
+        if is_orphan:
+            levels[name] = bottom_level
+
     return levels
 
 
@@ -832,6 +905,19 @@ def render_editor_tab(df: pd.DataFrame) -> None:
         placeholder="https://docs.google.com/spreadsheets/d/.../edit?usp=sharing",
     )
 
+    if google_sheets_configured():
+        st.info(
+            "🔗 Google Sheets sync is **active**. "
+            "Saving changes will also update the linked Google Sheet.",
+            icon="✅",
+        )
+    else:
+        st.caption(
+            "💡 To enable automatic Google Sheet write-back, set the "
+            "`GOOGLE_SERVICE_ACCOUNT_JSON` environment variable to your service-account "
+            "credentials JSON and make sure a sheet URL is saved above."
+        )
+
     action_col, reload_col, info_col = st.columns([1, 1, 3])
     with action_col:
         if st.button("Save URL"):
@@ -918,6 +1004,13 @@ def render_editor_tab(df: pd.DataFrame) -> None:
             save_df["Generation"] = save_df["Generation"].apply(normalize_generation)
             save_data(save_df)
             st.success("Saved updates to family_data.csv.")
+            if google_sheets_configured():
+                try:
+                    pushed = push_to_google_sheets(normalize_dataframe(save_df))
+                    if pushed:
+                        st.success("✅ Google Sheet updated.")
+                except Exception as exc:  # noqa: BLE001
+                    st.warning(f"Could not update Google Sheet: {exc}")
             st.rerun()
     with reset_col:
         if st.button("↩️ Discard changes"):
