@@ -47,6 +47,7 @@ ROOT_MEMBER_NAME = "Hans Künz"
 NULL_LIKE_TEXT_VALUES = {"", "none", "nan", "nat", "null"}
 EDITOR_FOOTER_MARKER = "Aktuelles Datum"
 SUPPORTED_IMAGE_EXTENSIONS = ("jpg", "jpeg", "png")
+PROFILE_CHAR_REPLACEMENTS = {"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"}
 
 st.set_page_config(
     page_title="Family Tree",
@@ -446,7 +447,7 @@ def image_file_to_data_uri(path: Path) -> str:
 def normalize_profile_key(value: str) -> str:
     """Normalize a member/image name for tolerant portrait filename matching."""
     text = str(value).strip()
-    for source, target in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+    for source, target in PROFILE_CHAR_REPLACEMENTS.items():
         text = text.replace(source, target).replace(source.upper(), target.upper())
     text = (
         unicodedata.normalize("NFKD", text)
@@ -658,6 +659,7 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[
 
 def ensure_selected_member(df: pd.DataFrame) -> str | None:
     names = df["Name"].tolist()
+    st.session_state.setdefault("last_graph_click", None)
     selected = st.session_state.get("selected_member")
     if selected not in names:
         st.session_state["selected_member"] = names[0] if names else None
