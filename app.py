@@ -46,6 +46,7 @@ AVATAR_PALETTE = ["#1d4ed8", "#7c3aed", "#be123c", "#0891b2", "#15803d", "#b4530
 ROOT_MEMBER_NAME = "Hans Künz"
 NULL_LIKE_TEXT_VALUES = {"", "none", "nan", "nat", "null"}
 EDITOR_FOOTER_MARKER = "Aktuelles Datum"
+SUPPORTED_IMAGE_EXTENSIONS = ("jpg", "jpeg", "png")
 
 st.set_page_config(
     page_title="Family Tree",
@@ -443,6 +444,7 @@ def image_file_to_data_uri(path: Path) -> str:
 
 
 def normalize_profile_key(value: str) -> str:
+    """Normalize a member/image name for tolerant portrait filename matching."""
     text = str(value).strip()
     for source, target in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
         text = text.replace(source, target).replace(source.upper(), target.upper())
@@ -456,7 +458,8 @@ def normalize_profile_key(value: str) -> str:
 
 
 def find_profile_image_path(name: str) -> Path | None:
-    for ext in ("jpg", "jpeg", "png"):
+    """Return the portrait path for *name*, matching exact and normalized filenames."""
+    for ext in SUPPORTED_IMAGE_EXTENSIONS:
         exact_path = PROFILES_DIR / f"{name}.{ext}"
         if exact_path.exists():
             return exact_path
@@ -466,7 +469,7 @@ def find_profile_image_path(name: str) -> Path | None:
         return None
 
     for path in PROFILES_DIR.iterdir():
-        if path.is_file() and path.suffix.lower().lstrip(".") in {"jpg", "jpeg", "png"}:
+        if path.is_file() and path.suffix.lower().lstrip(".") in SUPPORTED_IMAGE_EXTENSIONS:
             if normalize_profile_key(path.stem) == normalized_name:
                 return path
     return None
@@ -717,13 +720,13 @@ def save_profile_image(name: str, uploaded_file) -> Path:
     """
     PROFILES_DIR.mkdir(parents=True, exist_ok=True)
     # Remove existing portraits for this member (any supported extension).
-    for ext in ("jpg", "jpeg", "png"):
+    for ext in SUPPORTED_IMAGE_EXTENSIONS:
         old_path = PROFILES_DIR / f"{name}.{ext}"
         if old_path.exists():
             old_path.unlink()
     # Determine extension from the uploaded file name; default to jpg.
     suffix = Path(uploaded_file.name).suffix.lower()
-    if suffix not in (".jpg", ".jpeg", ".png"):
+    if suffix.lstrip(".") not in SUPPORTED_IMAGE_EXTENSIONS:
         suffix = ".jpg"
     dest = PROFILES_DIR / f"{name}{suffix}"
     dest.write_bytes(uploaded_file.read())
@@ -864,6 +867,7 @@ def render_tree_tab(df: pd.DataFrame) -> None:
     elif isinstance(clicked, str):
         clicked_name = clicked
 
+    # streamlit-agraph can repeat the same click value across reruns; skip duplicates.
     if clicked_name in known_names and clicked_name != st.session_state.get("last_graph_click"):
         st.session_state["last_graph_click"] = clicked_name
         st.session_state["selected_member"] = clicked_name
