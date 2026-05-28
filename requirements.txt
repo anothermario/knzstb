@@ -2,3 +2,5 @@ streamlit>=1.32.0
 pandas>=2.0.0
 Pillow>=10.0.0
 streamlit-agraph==0.0.45
+gspread>=6.0.0
+google-auth>=2.0.0
