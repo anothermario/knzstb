@@ -373,7 +373,7 @@ def push_to_google_sheets(df: pd.DataFrame) -> bool:
     rows = [output.columns.tolist()] + output.values.tolist()
     # gspread expects plain strings/numbers; convert everything
     rows = [[str(cell) if cell is not None else "" for cell in row] for row in rows]
-    worksheet.update(rows)
+    worksheet.update("A1", rows)
     return True
 
 
@@ -1010,7 +1010,7 @@ def render_editor_tab(df: pd.DataFrame) -> None:
                     if pushed:
                         st.success("✅ Google Sheet updated.")
                 except Exception as exc:  # noqa: BLE001
-                    st.warning(f"Could not update Google Sheet: {exc}")
+                    st.warning(f"Failed to sync changes to Google Sheet: {exc}")
             st.rerun()
     with reset_col:
         if st.button("↩️ Discard changes"):
