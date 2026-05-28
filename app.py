@@ -445,7 +445,7 @@ def image_file_to_data_uri(path: Path) -> str:
 def normalize_profile_key(value: str) -> str:
     text = str(value).strip()
     for source, target in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
-        text = text.replace(source, target).replace(source.upper(), target.capitalize())
+        text = text.replace(source, target).replace(source.upper(), target.upper())
     text = (
         unicodedata.normalize("NFKD", text)
         .encode("ascii", "ignore")
@@ -596,6 +596,7 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[
             Node(
                 id=member_name,
                 label=label,
+                # streamlit-agraph opens node.div.innerHTML on double-click; keep it empty.
                 div={"innerHTML": ""},
                 shape="circularImage",
                 image=profile_image_data_uri(member_name),
@@ -855,6 +856,7 @@ def render_tree_tab(df: pd.DataFrame) -> None:
     st.markdown("<div class='tree-panel'>", unsafe_allow_html=True)
     clicked = agraph(nodes=nodes, edges=edges, config=config)
     st.markdown("</div>", unsafe_allow_html=True)
+    known_names = set(df["Name"].tolist())
 
     clicked_name = None
     if isinstance(clicked, dict) and clicked.get("id"):
@@ -862,9 +864,7 @@ def render_tree_tab(df: pd.DataFrame) -> None:
     elif isinstance(clicked, str):
         clicked_name = clicked
 
-    if clicked_name in df["Name"].values and clicked_name != st.session_state.get(
-        "last_graph_click"
-    ):
+    if clicked_name in known_names and clicked_name != st.session_state.get("last_graph_click"):
         st.session_state["last_graph_click"] = clicked_name
         st.session_state["selected_member"] = clicked_name
         st.session_state["sidebar_selected_member"] = clicked_name
