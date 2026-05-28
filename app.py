@@ -538,6 +538,7 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[
         physics=False,
         hierarchical=True,
     )
+    # streamlit-agraph expects an object here; None can leave the frontend stuck loading.
     config.groups = {}
     config.layout["hierarchical"].update(
         {
@@ -548,7 +549,8 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[
             "sortMethod": "directed",
         }
     )
-    config.physics.setdefault("stabilization", {})["fit"] = True
+    stabilization = config.physics.setdefault("stabilization", {})
+    stabilization["fit"] = True
     return nodes, edges, config, branch_colors
 
 
