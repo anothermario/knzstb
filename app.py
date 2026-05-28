@@ -660,6 +660,10 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[
 def ensure_selected_member(df: pd.DataFrame) -> str | None:
     names = df["Name"].tolist()
     st.session_state.setdefault("last_graph_click", None)
+    pending_sidebar_selected = st.session_state.pop("pending_sidebar_selected_member", None)
+    if pending_sidebar_selected in names:
+        st.session_state["selected_member"] = pending_sidebar_selected
+        st.session_state["sidebar_selected_member"] = pending_sidebar_selected
     selected = st.session_state.get("selected_member")
     if selected not in names:
         st.session_state["selected_member"] = names[0] if names else None
@@ -878,7 +882,7 @@ def render_tree_tab(df: pd.DataFrame) -> None:
     ):
         st.session_state["last_graph_click"] = clicked_name
         st.session_state["selected_member"] = clicked_name
-        st.session_state["sidebar_selected_member"] = clicked_name
+        st.session_state["pending_sidebar_selected_member"] = clicked_name
         st.rerun()
 
     selected_name = ensure_selected_member(df)
