@@ -8,6 +8,7 @@ import inspect
 import json
 import os
 import re
+import unicodedata
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterable
@@ -441,6 +442,36 @@ def image_file_to_data_uri(path: Path) -> str:
     return f"data:{media_type};base64,{encoded}"
 
 
+def normalize_profile_key(value: str) -> str:
+    text = str(value).strip()
+    for source, target in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        text = text.replace(source, target).replace(source.upper(), target.capitalize())
+    text = (
+        unicodedata.normalize("NFKD", text)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .lower()
+    )
+    return re.sub(r"[^a-z0-9]+", "", text)
+
+
+def find_profile_image_path(name: str) -> Path | None:
+    for ext in ("jpg", "jpeg", "png"):
+        exact_path = PROFILES_DIR / f"{name}.{ext}"
+        if exact_path.exists():
+            return exact_path
+
+    normalized_name = normalize_profile_key(name)
+    if not normalized_name or not PROFILES_DIR.exists():
+        return None
+
+    for path in PROFILES_DIR.iterdir():
+        if path.is_file() and path.suffix.lower().lstrip(".") in {"jpg", "jpeg", "png"}:
+            if normalize_profile_key(path.stem) == normalized_name:
+                return path
+    return None
+
+
 def fallback_avatar_data_uri(name: str) -> str:
     initials = html.escape(build_initials(name))
     color = AVATAR_PALETTE[sum(ord(char) for char in name) % len(AVATAR_PALETTE)]
@@ -456,12 +487,11 @@ def fallback_avatar_data_uri(name: str) -> str:
     encoded = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
     return f"data:image/svg+xml;base64,{encoded}"
 
-
 def profile_image_data_uri(name: str) -> str:
-    for ext in ("jpg", "jpeg", "png"):
-        path = PROFILES_DIR / f"{name}.{ext}"
-        if path.exists():
-            return image_file_to_data_uri(path)
+def profile_image_data_uri(name: str) -> str:
+    image_path = find_profile_image_path(name)
+    if image_path is not None:
+        return image_file_to_data_uri(image_path)
     return fallback_avatar_data_uri(name)
 
 
@@ -567,10 +597,7 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[
             Node(
                 id=member_name,
                 label=label,
-                title=(
-                    f"{member_name} • {format_birthdate(row['Birthdate'])} • "
-                    f"{branch}"
-                ),
+                div={"innerHTML": ""},
                 shape="circularImage",
                 image=profile_image_data_uri(member_name),
                 size=40,
@@ -631,6 +658,8 @@ def ensure_selected_member(df: pd.DataFrame) -> str | None:
     selected = st.session_state.get("selected_member")
     if selected not in names:
         st.session_state["selected_member"] = names[0] if names else None
+    if st.session_state.get("sidebar_selected_member") not in names:
+        st.session_state["sidebar_selected_member"] = st.session_state.get("selected_member")
     return st.session_state.get("selected_member")
 
 
@@ -715,6 +744,7 @@ def render_sidebar(df: pd.DataFrame) -> None:
                 "Choose a family member",
                 names,
                 index=selected_index,
+                key="sidebar_selected_member",
             )
             st.session_state["selected_member"] = selected
             selected_name = selected
@@ -829,10 +859,19 @@ def render_tree_tab(df: pd.DataFrame) -> None:
     clicked = agraph(nodes=nodes, edges=edges, config=config)
     st.markdown("</div>", unsafe_allow_html=True)
 
+    clicked_name = None
     if isinstance(clicked, dict) and clicked.get("id"):
-        st.session_state["selected_member"] = clicked["id"]
+        clicked_name = clicked["id"]
     elif isinstance(clicked, str):
-        st.session_state["selected_member"] = clicked
+        clicked_name = clicked
+
+    if clicked_name in df["Name"].values and clicked_name != st.session_state.get(
+        "last_graph_click"
+    ):
+        st.session_state["last_graph_click"] = clicked_name
+        st.session_state["selected_member"] = clicked_name
+        st.session_state["sidebar_selected_member"] = clicked_name
+        st.rerun()
 
     selected_name = ensure_selected_member(df)
     selected_member = (
