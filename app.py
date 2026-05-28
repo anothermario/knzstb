@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import html
 import inspect
 import json
 import os
 import re
+import secrets
 import unicodedata
 from datetime import date, datetime
 from pathlib import Path
@@ -32,8 +34,29 @@ DATA_URL_PATH = Path(__file__).with_name("family_data_url.txt")
 PROFILES_DIR = Path(__file__).parent / "assets" / "profiles"
 DEFAULT_DATA_URL = os.getenv("FAMILY_TREE_DATA_URL", "").strip()
 APP_TITLE = os.getenv("FAMILY_TREE_TITLE", "Family Tree").strip() or "Family Tree"
-LOGIN_USERNAME = "knzstb"
-LOGIN_PASSWORD = "hanskuenz"
+LOGIN_USERNAME = os.getenv("FAMILY_TREE_USERNAME", "knzstb").strip()
+if not LOGIN_USERNAME:
+    LOGIN_USERNAME = "knzstb"
+
+LOGIN_PASSWORD_SALT_HEX = os.getenv(
+    "FAMILY_TREE_PASSWORD_SALT_HEX",
+    "4c6f67696e53616c7432303236",
+).strip()
+if not LOGIN_PASSWORD_SALT_HEX:
+    LOGIN_PASSWORD_SALT_HEX = "4c6f67696e53616c7432303236"
+
+_password_iterations_env = os.getenv("FAMILY_TREE_PASSWORD_ITERATIONS", "390000").strip()
+try:
+    LOGIN_PASSWORD_ITERATIONS = int(_password_iterations_env) if _password_iterations_env else 390000
+except ValueError:
+    LOGIN_PASSWORD_ITERATIONS = 390000
+
+LOGIN_PASSWORD_HASH = os.getenv(
+    "FAMILY_TREE_PASSWORD_HASH",
+    "42e945b2105e63447d967910eb9ab73634da88ea7a802d4ac1dd08824c23c638",
+).strip()
+if not LOGIN_PASSWORD_HASH:
+    LOGIN_PASSWORD_HASH = "42e945b2105e63447d967910eb9ab73634da88ea7a802d4ac1dd08824c23c638"
 REQUIRED_COLUMNS = ["Generation", "Branch", "Birthdate", "Name", "Parent"]
 BRANCH_PALETTE = [
     "#0f766e",
@@ -1071,10 +1094,19 @@ def require_login() -> None:
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
     if st.button("Login"):
-        if username == LOGIN_USERNAME and password == LOGIN_PASSWORD:
+        username_ok = secrets.compare_digest(username.strip(), LOGIN_USERNAME)
+        password_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            bytes.fromhex(LOGIN_PASSWORD_SALT_HEX),
+            LOGIN_PASSWORD_ITERATIONS,
+        ).hex()
+        password_ok = secrets.compare_digest(password_hash, LOGIN_PASSWORD_HASH)
+        if username_ok and password_ok:
             st.session_state["authenticated"] = True
             st.rerun()
-        st.error("Invalid username or password.")
+        else:
+            st.error("Invalid username or password.")
 
     st.stop()
 

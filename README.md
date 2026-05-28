@@ -90,13 +90,32 @@ streamlit run app.py
 
 Open your browser at **http://localhost:8501**
 
+The login screen requires:
+- Username: `knzstb`
+- Password: `hanskuenz`
+
+Optional: override these defaults with environment variables before launch:
+
+```bash
+export FAMILY_TREE_USERNAME="myuser"
+export FAMILY_TREE_PASSWORD_SALT_HEX="4c6f67696e53616c7432303236"
+export FAMILY_TREE_PASSWORD_ITERATIONS="390000"
+export FAMILY_TREE_PASSWORD_HASH="$(python - <<'PY'
+import hashlib
+salt = bytes.fromhex('4c6f67696e53616c7432303236')
+iterations = 390000
+print(hashlib.pbkdf2_hmac('sha256', 'your_password_here'.encode(), salt, iterations).hex())
+PY
+)"
+```
+
 ---
 
 ## Iterative Improvement Loop
 
 1. **Edit data** — use the *Edit Data* tab in the app or edit `family_data.csv` directly.
 2. **Add photos** — drop `[Name].jpg` files into `assets/profiles/`.
-3. **Click profiles** — select a node in the tree to review the current profile card.
+3. **Click profiles** — select a node in the tree to review the sidebar profile panel.
 4. **Review hierarchy** — confirm `Parent` values are correct because the tree layout is built from `Name` → `Parent`.
 5. **Save & reload** — click *Save Changes* in the editor; Streamlit hot-reloads automatically.
 6. **Reset if needed** — save a URL in *Google Sheet / CSV URL*, then use *Reload from Google Sheet* to re-initialize local CSV data.
