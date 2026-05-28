@@ -757,7 +757,6 @@ def render_sidebar(df: pd.DataFrame) -> None:
             )
             if uploaded is not None:
                 dest = save_profile_image(selected_name, uploaded)
-                st.cache_data.clear()
                 st.success(f"Saved as `{dest.name}`")
                 st.rerun()
 
