@@ -25,7 +25,8 @@ knzstb/
 | Feature | Details |
 |---|---|
 | **Interactive Tree** | Clickable, high-contrast `streamlit-agraph` tree with circular portraits and bold `Name (Birthyear)` labels |
-| **Profile Card** | Selecting a node opens a centered profile card with a large circular portrait plus age, branch, birthdate, and parent |
+| **Sidebar Profile** | Selecting a node updates the sidebar profile panel with portrait, generation, branch, birthdate, and parent |
+| **Login Gate** | App access is unlocked only after entering the configured username and password at launch |
 | **Image Handling** | Loads `assets/profiles/[Name].jpg` (or `.jpeg`/`.png`); falls back to a gray initials avatar |
 | **Dynamic Age** | Calculates current age from `Birthdate` using today’s date |
 | **Data Editor** | `st.data_editor` table — edit and save changes back to `family_data.csv`, set/save a Google Sheet URL, reload from it, and export the current CSV |
