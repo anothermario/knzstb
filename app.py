@@ -548,7 +548,7 @@ def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[
             "sortMethod": "directed",
         }
     )
-    config.physics["stabilization"]["fit"] = True
+    config.physics.setdefault("stabilization", {})["fit"] = True
     return nodes, edges, config, branch_colors
 
 
