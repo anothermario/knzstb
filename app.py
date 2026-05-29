@@ -22,7 +22,7 @@ try:
     from streamlit_agraph import Config, Edge, Node, agraph
 
     STREAMLIT_AGRAPH_AVAILABLE = True
-except Exception:  # pragma: no cover - fail open to keep app launchable.
+except ImportError:  # pragma: no cover - fail open to keep app launchable.
     Config = Edge = Node = agraph = None
     STREAMLIT_AGRAPH_AVAILABLE = False
 
@@ -833,16 +833,19 @@ def render_tree_tab(df: pd.DataFrame) -> None:
         st.info("No members match the current filters.")
         return
 
-    if not STREAMLIT_AGRAPH_AVAILABLE:
-        st.warning(
-            "Interactive tree is temporarily unavailable in this runtime. "
-            "Use the sidebar member selector while dependency startup stabilizes."
-        )
+    def render_tree_fallback_table() -> None:
         st.dataframe(
             filtered[["Generation", "Branch", "Name", "Birthdate", "Parent"]]
             .assign(Birthdate=lambda frame: frame["Birthdate"].apply(format_birthdate_for_csv))
             .reset_index(drop=True)
         )
+
+    if not STREAMLIT_AGRAPH_AVAILABLE:
+        st.warning(
+            "Interactive tree is temporarily unavailable in this runtime. "
+            "Use the sidebar member selector while dependency startup stabilizes."
+        )
+        render_tree_fallback_table()
         return
 
     nodes, edges, config, branch_colors = build_graph(filtered)
@@ -865,17 +868,13 @@ def render_tree_tab(df: pd.DataFrame) -> None:
     st.markdown("<div class='tree-panel'>", unsafe_allow_html=True)
     try:
         clicked = agraph(nodes=nodes, edges=edges, config=config)
-    except Exception:
+    except (StreamlitAPIException, RuntimeError, TypeError, ValueError):
         st.markdown("</div>", unsafe_allow_html=True)
         st.warning(
             "Interactive tree failed to render in this session. "
             "Use the sidebar member selector while the component reloads."
         )
-        st.dataframe(
-            filtered[["Generation", "Branch", "Name", "Birthdate", "Parent"]]
-            .assign(Birthdate=lambda frame: frame["Birthdate"].apply(format_birthdate_for_csv))
-            .reset_index(drop=True)
-        )
+        render_tree_fallback_table()
         return
     st.markdown("</div>", unsafe_allow_html=True)
     known_names = set(df["Name"].tolist())
