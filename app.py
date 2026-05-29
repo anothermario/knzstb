@@ -1044,52 +1044,6 @@ def render_editor_tab(df: pd.DataFrame) -> None:
     st.markdown("### ✏️ Edit Family Data")
     st.caption("Edit the provided dataset and save updates back to `family_data.csv`.")
 
-    if "data_source_url_input" not in st.session_state:
-        st.session_state["data_source_url_input"] = configured_data_url()
-
-    data_url_value = st.text_input(
-        "Google Sheet / CSV URL",
-        key="data_source_url_input",
-        placeholder="https://docs.google.com/spreadsheets/d/.../edit?usp=sharing",
-    )
-
-    if google_sheets_configured():
-        st.info(
-            "🔗 Google Sheets sync is **active**. "
-            "Saving changes will also update the linked Google Sheet.",
-            icon="✅",
-        )
-    else:
-        st.caption(
-            "💡 To enable automatic Google Sheet write-back, set the "
-            "`GOOGLE_SERVICE_ACCOUNT_JSON` environment variable to your service-account "
-            "credentials JSON and make sure a sheet URL is saved above."
-        )
-
-    action_col, reload_col, info_col = st.columns([1, 1, 3])
-    with action_col:
-        if st.button("Save URL"):
-            try:
-                save_data_url(data_url_value)
-            except OSError:
-                st.error(
-                    "Could not save URL to family_data_url.txt. "
-                    "Check file permissions and disk space."
-                )
-            else:
-                if data_url_value.strip():
-                    st.success("Saved data source URL.")
-                else:
-                    st.success("Cleared saved data source URL.")
-    with reload_col:
-        if st.button("Reload from Google Sheet"):
-            refresh_from_sheet(data_url_value)
-    with info_col:
-        st.caption(
-            "Saves the URL locally in `family_data_url.txt`; the reload button uses this URL "
-            "to refresh `family_data.csv`."
-        )
-
     export_df = normalize_dataframe(df.copy())
     export_df["Birthdate"] = export_df["Birthdate"].apply(format_birthdate_for_csv)
     st.download_button(
