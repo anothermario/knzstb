@@ -869,12 +869,13 @@ def render_tree_tab(df: pd.DataFrame) -> None:
     st.markdown("<div class='tree-panel'>", unsafe_allow_html=True)
     try:
         clicked = agraph(nodes=nodes, edges=edges, config=config)
-    except StreamlitAPIException:
+    except Exception as exc:
         st.markdown("</div>", unsafe_allow_html=True)
         st.warning(
             "Interactive tree failed to render in this session. "
             "Use the sidebar member selector while the component reloads."
         )
+        st.caption(f"Render fallback reason: {type(exc).__name__}")
         render_tree_fallback_table(filtered)
         return
     st.markdown("</div>", unsafe_allow_html=True)
