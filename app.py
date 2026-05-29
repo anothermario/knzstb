@@ -1003,15 +1003,13 @@ def refresh_from_sheet(url: str | None = None) -> None:
 
 
 def normalize_nullable_text_series(series: pd.Series) -> pd.Series:
-    return (
-        series.astype(str)
-        .str.strip()
-        .apply(
-            lambda value: ""
-            if value.lower() in NULL_LIKE_TEXT_VALUES
-            else value
-        )
-    )
+    def normalize_value(value: Any) -> str:
+        if pd.isna(value):
+            return ""
+        cleaned = str(value).strip()
+        return "" if cleaned.lower() in NULL_LIKE_TEXT_VALUES else cleaned
+
+    return series.apply(normalize_value)
 
 
 def sanitize_editor_rows(df: pd.DataFrame) -> pd.DataFrame:
