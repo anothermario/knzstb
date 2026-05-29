@@ -22,7 +22,7 @@ try:
     from streamlit_agraph import Config, Edge, Node, agraph
 
     STREAMLIT_AGRAPH_AVAILABLE = True
-except ImportError:  # pragma: no cover - fail open to keep app launchable.
+except ImportError:  # pragma: no cover - graceful fallback when component is unavailable.
     Config = Edge = Node = agraph = None
     STREAMLIT_AGRAPH_AVAILABLE = False
 
@@ -843,8 +843,8 @@ def render_tree_tab(df: pd.DataFrame) -> None:
 
     if not STREAMLIT_AGRAPH_AVAILABLE:
         st.warning(
-            "Interactive tree is temporarily unavailable in this runtime. "
-            "Use the sidebar member selector while dependency startup stabilizes."
+            "Interactive tree component is unavailable in this runtime. "
+            "Use the sidebar member selector to navigate members."
         )
         render_tree_fallback_table(filtered)
         return
@@ -873,7 +873,7 @@ def render_tree_tab(df: pd.DataFrame) -> None:
         st.markdown("</div>", unsafe_allow_html=True)
         st.warning(
             "Interactive tree failed to render in this session. "
-            "Use the sidebar member selector while the component reloads."
+            "Use the sidebar member selector to navigate members."
         )
         st.caption(f"Render fallback reason: {type(exc).__name__}")
         render_tree_fallback_table(filtered)
