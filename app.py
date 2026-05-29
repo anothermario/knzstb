@@ -18,7 +18,13 @@ from urllib.error import URLError
 
 import pandas as pd
 import streamlit as st
-from streamlit_agraph import Config, Edge, Node, agraph
+try:
+    from streamlit_agraph import Config, Edge, Node, agraph
+
+    STREAMLIT_AGRAPH_AVAILABLE = True
+except ImportError:  # pragma: no cover - graceful fallback when component is unavailable.
+    Config = Edge = Node = agraph = None
+    STREAMLIT_AGRAPH_AVAILABLE = False
 
 try:
     from streamlit.errors import StreamlitAPIException
@@ -787,6 +793,14 @@ def render_sidebar(df: pd.DataFrame) -> None:
         )
 
 
+def render_tree_fallback_table(df: pd.DataFrame) -> None:
+    st.dataframe(
+        df[["Generation", "Branch", "Name", "Birthdate", "Parent"]]
+        .assign(Birthdate=lambda frame: frame["Birthdate"].apply(format_birthdate_for_csv))
+        .reset_index(drop=True)
+    )
+
+
 def render_tree_tab(df: pd.DataFrame) -> None:
     st.markdown("### 🌳 Family Tree")
     st.caption(
@@ -827,6 +841,14 @@ def render_tree_tab(df: pd.DataFrame) -> None:
         st.info("No members match the current filters.")
         return
 
+    if not STREAMLIT_AGRAPH_AVAILABLE:
+        st.warning(
+            "Interactive tree component is unavailable in this runtime. "
+            "Use the sidebar member selector to navigate members."
+        )
+        render_tree_fallback_table(filtered)
+        return
+
     nodes, edges, config, branch_colors = build_graph(filtered)
 
     legend_branches = sorted(
@@ -845,7 +867,17 @@ def render_tree_tab(df: pd.DataFrame) -> None:
         )
 
     st.markdown("<div class='tree-panel'>", unsafe_allow_html=True)
-    clicked = agraph(nodes=nodes, edges=edges, config=config)
+    try:
+        clicked = agraph(nodes=nodes, edges=edges, config=config)
+    except Exception as exc:
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.warning(
+            "Interactive tree failed to render in this session. "
+            "Use the sidebar member selector to navigate members."
+        )
+        st.caption(f"Render fallback reason: {type(exc).__name__}")
+        render_tree_fallback_table(filtered)
+        return
     st.markdown("</div>", unsafe_allow_html=True)
     known_names = set(df["Name"].tolist())
 
