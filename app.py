@@ -295,14 +295,18 @@ def default_root_member_row() -> dict[str, Any]:
     }
 
 
-def last_non_empty_value(series: pd.Series) -> Any:
+def empty_required_value(column: str) -> Any:
+    return pd.NaT if column == "Birthdate" else ""
+
+
+def last_non_empty_value(series: pd.Series, *, empty_value: Any) -> Any:
     for value in reversed(series.tolist()):
         if pd.isna(value):
             continue
         if isinstance(value, str) and not value.strip():
             continue
         return value
-    return pd.NaT if pd.api.types.is_datetime64_any_dtype(series) else ""
+    return empty_value
 
 
 def merge_duplicate_member_rows(df: pd.DataFrame) -> pd.DataFrame:
@@ -310,7 +314,10 @@ def merge_duplicate_member_rows(df: pd.DataFrame) -> pd.DataFrame:
     for _, group in df.groupby("Name", sort=False, dropna=False):
         merged_rows.append(
             {
-                column: last_non_empty_value(group[column])
+                column: last_non_empty_value(
+                    group[column],
+                    empty_value=empty_required_value(column),
+                )
                 for column in REQUIRED_COLUMNS
             }
         )
@@ -349,13 +356,12 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             ignore_index=True,
         )
 
-    if ROOT_MEMBER_NAME in normalized["Name"].values:
-        normalized.loc[normalized["Name"] == ROOT_MEMBER_NAME, "Parent"] = ""
-        normalized.loc[normalized["Name"] == ROOT_MEMBER_NAME, "Generation"] = "G1"
-        g2_mask = (normalized["Generation"] == "G2") & (
-            normalized["Name"] != ROOT_MEMBER_NAME
-        )
-        normalized.loc[g2_mask, "Parent"] = ROOT_MEMBER_NAME
+    normalized.loc[normalized["Name"] == ROOT_MEMBER_NAME, "Parent"] = ""
+    normalized.loc[normalized["Name"] == ROOT_MEMBER_NAME, "Generation"] = "G1"
+    g2_mask = (normalized["Generation"] == "G2") & (
+        normalized["Name"] != ROOT_MEMBER_NAME
+    )
+    normalized.loc[g2_mask, "Parent"] = ROOT_MEMBER_NAME
 
     normalized = normalized[normalized["Name"] != ""]
     normalized = merge_duplicate_member_rows(normalized)
