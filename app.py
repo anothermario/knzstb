@@ -285,6 +285,38 @@ def hierarchy_sort_key(name: str, parents: dict[str, str]) -> tuple[int, str]:
     return level, name
 
 
+def default_root_member_row() -> dict[str, Any]:
+    return {
+        "Generation": "G1",
+        "Branch": "",
+        "Birthdate": pd.NaT,
+        "Name": ROOT_MEMBER_NAME,
+        "Parent": "",
+    }
+
+
+def last_non_empty_value(series: pd.Series) -> Any:
+    for value in reversed(series.tolist()):
+        if pd.isna(value):
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        return value
+    return pd.NaT if pd.api.types.is_datetime64_any_dtype(series) else ""
+
+
+def merge_duplicate_member_rows(df: pd.DataFrame) -> pd.DataFrame:
+    merged_rows: list[dict[str, Any]] = []
+    for _, group in df.groupby("Name", sort=False, dropna=False):
+        merged_rows.append(
+            {
+                column: last_non_empty_value(group[column])
+                for column in REQUIRED_COLUMNS
+            }
+        )
+    return pd.DataFrame(merged_rows, columns=REQUIRED_COLUMNS)
+
+
 def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     normalized = df.copy()
     normalized = normalized.rename(columns={"Partent": "Parent"})
@@ -311,15 +343,22 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             lambda value: "" if pd.isna(value) else str(value).strip()
         )
     normalized["Parent"] = normalize_nullable_text_series(normalized["Parent"])
+    if ROOT_MEMBER_NAME not in normalized["Name"].values:
+        normalized = pd.concat(
+            [pd.DataFrame([default_root_member_row()]), normalized],
+            ignore_index=True,
+        )
 
     if ROOT_MEMBER_NAME in normalized["Name"].values:
         normalized.loc[normalized["Name"] == ROOT_MEMBER_NAME, "Parent"] = ""
+        normalized.loc[normalized["Name"] == ROOT_MEMBER_NAME, "Generation"] = "G1"
         g2_mask = (normalized["Generation"] == "G2") & (
             normalized["Name"] != ROOT_MEMBER_NAME
         )
         normalized.loc[g2_mask, "Parent"] = ROOT_MEMBER_NAME
 
-    normalized = normalized[normalized["Name"] != ""].drop_duplicates("Name", keep="last")
+    normalized = normalized[normalized["Name"] != ""]
+    normalized = merge_duplicate_member_rows(normalized)
     parents = dict(zip(normalized["Name"], normalized["Parent"]))
     normalized = normalized.assign(
         _generation_sort=normalized["Generation"].apply(generation_sort_key),
