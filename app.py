@@ -819,6 +819,11 @@ def render_sidebar(df: pd.DataFrame) -> None:
 
             # ── Photo upload ───────────────────────────────────────────────
             st.markdown("#### 📷 Upload portrait")
+            # Show persisted success message from the previous upload rerun.
+            _saved_name_key = f"photo_upload_saved_{selected_name}"
+            _saved_name = st.session_state.pop(_saved_name_key, None)
+            if _saved_name:
+                st.success(f"Saved as `{_saved_name}`")
             uploaded = st.file_uploader(
                 f"Photo for {selected_name}",
                 type=["jpg", "jpeg", "png"],
@@ -827,7 +832,11 @@ def render_sidebar(df: pd.DataFrame) -> None:
             )
             if uploaded is not None:
                 dest = save_profile_image(selected_name, uploaded)
-                st.success(f"Saved as `{dest.name}`")
+                # Persist the success message so it survives the rerun.
+                st.session_state[_saved_name_key] = dest.name
+                # Clear the uploader widget state so it resets to empty on
+                # rerun instead of re-triggering the save (infinite loop).
+                st.session_state.pop(f"photo_upload_{selected_name}", None)
                 st.rerun()
 
         st.markdown("---")
