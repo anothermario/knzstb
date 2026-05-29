@@ -793,6 +793,14 @@ def render_sidebar(df: pd.DataFrame) -> None:
         )
 
 
+def render_tree_fallback_table(df: pd.DataFrame) -> None:
+    st.dataframe(
+        df[["Generation", "Branch", "Name", "Birthdate", "Parent"]]
+        .assign(Birthdate=lambda frame: frame["Birthdate"].apply(format_birthdate_for_csv))
+        .reset_index(drop=True)
+    )
+
+
 def render_tree_tab(df: pd.DataFrame) -> None:
     st.markdown("### 🌳 Family Tree")
     st.caption(
@@ -833,19 +841,12 @@ def render_tree_tab(df: pd.DataFrame) -> None:
         st.info("No members match the current filters.")
         return
 
-    def render_tree_fallback_table() -> None:
-        st.dataframe(
-            filtered[["Generation", "Branch", "Name", "Birthdate", "Parent"]]
-            .assign(Birthdate=lambda frame: frame["Birthdate"].apply(format_birthdate_for_csv))
-            .reset_index(drop=True)
-        )
-
     if not STREAMLIT_AGRAPH_AVAILABLE:
         st.warning(
             "Interactive tree is temporarily unavailable in this runtime. "
             "Use the sidebar member selector while dependency startup stabilizes."
         )
-        render_tree_fallback_table()
+        render_tree_fallback_table(filtered)
         return
 
     nodes, edges, config, branch_colors = build_graph(filtered)
@@ -868,13 +869,13 @@ def render_tree_tab(df: pd.DataFrame) -> None:
     st.markdown("<div class='tree-panel'>", unsafe_allow_html=True)
     try:
         clicked = agraph(nodes=nodes, edges=edges, config=config)
-    except (StreamlitAPIException, RuntimeError, TypeError, ValueError):
+    except StreamlitAPIException:
         st.markdown("</div>", unsafe_allow_html=True)
         st.warning(
             "Interactive tree failed to render in this session. "
             "Use the sidebar member selector while the component reloads."
         )
-        render_tree_fallback_table()
+        render_tree_fallback_table(filtered)
         return
     st.markdown("</div>", unsafe_allow_html=True)
     known_names = set(df["Name"].tolist())
