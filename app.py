@@ -299,7 +299,7 @@ def empty_required_value(column: str) -> Any:
     return pd.NaT if column == "Birthdate" else ""
 
 
-def last_non_empty_value(series: pd.Series, *, empty_value: Any) -> Any:
+def latest_non_empty_value(series: pd.Series, *, empty_value: Any) -> Any:
     for value in reversed(series.tolist()):
         if pd.isna(value):
             continue
@@ -314,7 +314,7 @@ def merge_duplicate_member_rows(df: pd.DataFrame) -> pd.DataFrame:
     for _, group in df.groupby("Name", sort=False, dropna=False):
         merged_rows.append(
             {
-                column: last_non_empty_value(
+                column: latest_non_empty_value(
                     group[column],
                     empty_value=empty_required_value(column),
                 )
