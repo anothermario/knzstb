@@ -713,7 +713,10 @@ def current_access_url() -> str:
     context = getattr(st, "context", None)
     if context is None:
         return ""
-    return safe_text(getattr(context, "url", ""), "")
+    try:
+        return safe_text(getattr(context, "url", ""), "")
+    except Exception:  # pragma: no cover - context support varies by runtime.
+        return ""
 
 
 def render_access_link_section(caption: str) -> None:
@@ -745,7 +748,7 @@ def render_access_link_section(caption: str) -> None:
           />
           <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.75rem;">
             <button id="copy-access-link" style="flex:1 1 140px;border:none;border-radius:999px;padding:0.7rem 0.95rem;background:#111827;color:#ffffff;font-weight:700;cursor:pointer;">Copy link</button>
-            <button id="share-access-link" style="flex:1 1 140px;border:none;border-radius:999px;padding:0.7rem 0.95rem;background:#dbeafe;color:#111827;font-weight:700;cursor:pointer;">Share link</button>
+            <button id="share-access-link" title="Share this link when your browser supports native sharing" style="flex:1 1 140px;border:none;border-radius:999px;padding:0.7rem 0.95rem;background:#dbeafe;color:#111827;font-weight:700;cursor:pointer;">Share link</button>
           </div>
           <div id="access-link-status" style="margin-top:0.65rem;font-size:0.82rem;color:#475569;"></div>
         </div>
@@ -766,7 +769,7 @@ def render_access_link_section(caption: str) -> None:
           if (navigator.share) {{
             shareButton.addEventListener("click", async () => {{
               try {{
-                await navigator.share({{ title: "Family Tree", url: accessUrl }});
+                await navigator.share({{ title: {json.dumps(APP_TITLE)}, url: accessUrl }});
                 status.textContent = "Share sheet opened.";
               }} catch (error) {{
                 if (error?.name !== "AbortError") {{
@@ -776,6 +779,8 @@ def render_access_link_section(caption: str) -> None:
             }});
           }} else {{
             shareButton.disabled = true;
+            shareButton.setAttribute("aria-label", "Share is not supported in this browser");
+            shareButton.title = "Share is not supported in this browser";
             shareButton.style.opacity = "0.55";
             shareButton.style.cursor = "default";
           }}
