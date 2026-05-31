@@ -777,7 +777,7 @@ def ensure_selected_member(df: pd.DataFrame) -> str | None:
     return st.session_state.get("selected_member")
 
 
-def save_profile_image(name: str, uploaded_file) -> Path:
+def save_profile_image(name: str, uploaded_file, content: bytes | None = None) -> Path:
     """Save *uploaded_file* to PROFILES_DIR as ``{name}.{ext}``.
 
     Any previous profile image for *name* is removed first, and the new portrait is
@@ -795,7 +795,8 @@ def save_profile_image(name: str, uploaded_file) -> Path:
     suffix = Path(uploaded_file.name).suffix.lower()
     if suffix.lstrip(".") not in SUPPORTED_IMAGE_EXTENSIONS:
         suffix = ".jpg"
-    content = uploaded_file.getvalue()
+    if content is None:
+        content = uploaded_file.getvalue()
     local_dest = LOCAL_PROFILES_DIR / f"{name}{suffix}"
     repo_dest = PROFILES_DIR / f"{name}{suffix}"
     local_dest.write_bytes(content)
@@ -863,9 +864,13 @@ def render_sidebar(df: pd.DataFrame) -> None:
             )
             _processed_upload_key = f"photo_upload_processed_{selected_name}"
             if uploaded is not None:
-                upload_signature = f"{uploaded.name}:{uploaded.size}"
+                uploaded_content = uploaded.getvalue()
+                upload_signature = (
+                    f"{uploaded.name}:{uploaded.size}:"
+                    f"{hashlib.sha256(uploaded_content).hexdigest()}"
+                )
                 if st.session_state.get(_processed_upload_key) != upload_signature:
-                    dest = save_profile_image(selected_name, uploaded)
+                    dest = save_profile_image(selected_name, uploaded, content=uploaded_content)
                     st.session_state[_processed_upload_key] = upload_signature
                     st.session_state[_saved_name_key] = dest.name
                     st.rerun()
