@@ -18,6 +18,7 @@ env/
 
 # Streamlit
 .streamlit/
+.local_state/
 
 # OS
 .DS_Store

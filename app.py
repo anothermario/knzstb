@@ -34,10 +34,14 @@ except ImportError:  # pragma: no cover - compatibility fallback for older Strea
 
         pass
 
-CSV_PATH = Path(__file__).with_name("family_data.csv")
-LEGACY_CSV_PATH = Path(__file__).with_name("family_tree.csv")
-DATA_URL_PATH = Path(__file__).with_name("family_data_url.txt")
-PROFILES_DIR = Path(__file__).parent / "assets" / "profiles"
+APP_DIR = Path(__file__).parent
+CSV_PATH = APP_DIR / "family_data.csv"
+LEGACY_CSV_PATH = APP_DIR / "family_tree.csv"
+DATA_URL_PATH = APP_DIR / "family_data_url.txt"
+PROFILES_DIR = APP_DIR / "assets" / "profiles"
+LOCAL_STATE_DIR = APP_DIR / ".local_state"
+LOCAL_CSV_PATH = LOCAL_STATE_DIR / "family_data.csv"
+LOCAL_PROFILES_DIR = LOCAL_STATE_DIR / "profiles"
 DEFAULT_DATA_URL = os.getenv("FAMILY_TREE_DATA_URL", "").strip()
 APP_TITLE = os.getenv("FAMILY_TREE_TITLE", "Family Tree").strip() or "Family Tree"
 LOGIN_USERNAME = os.getenv("FAMILY_TREE_USERNAME", "knzstb").strip()
@@ -384,7 +388,16 @@ def read_remote_data(url: str) -> pd.DataFrame:
 
 
 def bootstrap_local_data() -> None:
+    if LOCAL_CSV_PATH.exists() and LOCAL_CSV_PATH.stat().st_size > 0:
+        return
     if CSV_PATH.exists() and CSV_PATH.stat().st_size > 0:
+        try:
+            output = normalize_dataframe(pd.read_csv(CSV_PATH))
+        except (OSError, ValueError, pd.errors.ParserError):
+            return
+        LOCAL_STATE_DIR.mkdir(parents=True, exist_ok=True)
+        output["Birthdate"] = output["Birthdate"].apply(format_birthdate_for_csv)
+        output.to_csv(LOCAL_CSV_PATH, index=False)
         return
     if LEGACY_CSV_PATH.exists() and LEGACY_CSV_PATH.stat().st_size > 0:
         save_data(pd.read_csv(LEGACY_CSV_PATH))
@@ -402,6 +415,8 @@ def bootstrap_local_data() -> None:
 @st.cache_data
 def load_data() -> pd.DataFrame:
     bootstrap_local_data()
+    if LOCAL_CSV_PATH.exists():
+        return normalize_dataframe(pd.read_csv(LOCAL_CSV_PATH))
     if CSV_PATH.exists():
         return normalize_dataframe(pd.read_csv(CSV_PATH))
     data_url = configured_data_url()
@@ -469,6 +484,8 @@ def google_sheets_configured() -> bool:
 def save_data(df: pd.DataFrame) -> None:
     output = normalize_dataframe(df)
     output["Birthdate"] = output["Birthdate"].apply(format_birthdate_for_csv)
+    LOCAL_STATE_DIR.mkdir(parents=True, exist_ok=True)
+    output.to_csv(LOCAL_CSV_PATH, index=False)
     output.to_csv(CSV_PATH, index=False)
     st.cache_data.clear()
 
@@ -536,22 +553,31 @@ def normalize_profile_key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", text)
 
 
-def find_profile_image_path(name: str) -> Path | None:
-    """Return the portrait path for *name*, matching exact and normalized filenames."""
+def find_profile_image_in_dir(directory: Path, name: str) -> Path | None:
+    """Return portrait path for *name* in *directory* using exact and normalized matching."""
+    if not directory.exists():
+        return None
     for ext in SUPPORTED_IMAGE_EXTENSIONS:
-        exact_path = PROFILES_DIR / f"{name}.{ext}"
+        exact_path = directory / f"{name}.{ext}"
         if exact_path.exists():
             return exact_path
 
     normalized_name = normalize_profile_key(name)
-    if not normalized_name or not PROFILES_DIR.exists():
+    if not normalized_name:
         return None
 
-    for path in PROFILES_DIR.iterdir():
+    for path in directory.iterdir():
         if path.is_file() and path.suffix.lower().lstrip(".") in SUPPORTED_IMAGE_EXTENSIONS:
             if normalize_profile_key(path.stem) == normalized_name:
                 return path
     return None
+
+
+def find_profile_image_path(name: str) -> Path | None:
+    """Return the portrait path for *name*, preferring local persisted uploads."""
+    return find_profile_image_in_dir(LOCAL_PROFILES_DIR, name) or find_profile_image_in_dir(
+        PROFILES_DIR, name
+    )
 
 
 def fallback_avatar_data_uri(name: str) -> str:
@@ -754,22 +780,27 @@ def ensure_selected_member(df: pd.DataFrame) -> str | None:
 def save_profile_image(name: str, uploaded_file) -> Path:
     """Save *uploaded_file* to PROFILES_DIR as ``{name}.{ext}``.
 
-    Any previous profile image for *name* is removed first.
-    Returns the path of the newly saved file.
+    Any previous profile image for *name* is removed first, and the new portrait is
+    stored in both `.local_state/profiles` (pull/merge-safe) and `assets/profiles`.
+    Returns the local persisted path of the newly saved file.
     """
+    LOCAL_PROFILES_DIR.mkdir(parents=True, exist_ok=True)
     PROFILES_DIR.mkdir(parents=True, exist_ok=True)
-    # Remove existing portraits for this member (any supported extension).
-    for ext in SUPPORTED_IMAGE_EXTENSIONS:
-        old_path = PROFILES_DIR / f"{name}.{ext}"
-        if old_path.exists():
-            old_path.unlink()
+    for directory in (LOCAL_PROFILES_DIR, PROFILES_DIR):
+        for ext in SUPPORTED_IMAGE_EXTENSIONS:
+            old_path = directory / f"{name}.{ext}"
+            if old_path.exists():
+                old_path.unlink()
     # Determine extension from the uploaded file name; default to jpg.
     suffix = Path(uploaded_file.name).suffix.lower()
     if suffix.lstrip(".") not in SUPPORTED_IMAGE_EXTENSIONS:
         suffix = ".jpg"
-    dest = PROFILES_DIR / f"{name}{suffix}"
-    dest.write_bytes(uploaded_file.read())
-    return dest
+    content = uploaded_file.getvalue()
+    local_dest = LOCAL_PROFILES_DIR / f"{name}{suffix}"
+    repo_dest = PROFILES_DIR / f"{name}{suffix}"
+    local_dest.write_bytes(content)
+    repo_dest.write_bytes(content)
+    return local_dest
 
 
 def render_sidebar(df: pd.DataFrame) -> None:
@@ -830,14 +861,16 @@ def render_sidebar(df: pd.DataFrame) -> None:
                 key=f"photo_upload_{selected_name}",
                 label_visibility="collapsed",
             )
+            _processed_upload_key = f"photo_upload_processed_{selected_name}"
             if uploaded is not None:
-                dest = save_profile_image(selected_name, uploaded)
-                # Persist the success message so it survives the rerun.
-                st.session_state[_saved_name_key] = dest.name
-                # Clear the uploader widget state so it resets to empty on
-                # rerun instead of re-triggering the save (infinite loop).
-                st.session_state.pop(f"photo_upload_{selected_name}", None)
-                st.rerun()
+                upload_signature = f"{uploaded.name}:{uploaded.size}"
+                if st.session_state.get(_processed_upload_key) != upload_signature:
+                    dest = save_profile_image(selected_name, uploaded)
+                    st.session_state[_processed_upload_key] = upload_signature
+                    st.session_state[_saved_name_key] = dest.name
+                    st.rerun()
+            else:
+                st.session_state.pop(_processed_upload_key, None)
 
         st.markdown("---")
         st.markdown("### Data source")

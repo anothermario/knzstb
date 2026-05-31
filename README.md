@@ -10,6 +10,7 @@ A modern, interactive family tree built with **Python + Streamlit**.
 knzstb/
 ├── app.py                  # Main Streamlit application
 ├── family_data.csv         # Local editable family data
+├── .local_state/           # Auto-created local backup for data/photos (pull/merge-safe)
 ├── requirements.txt        # Python dependencies
 └── assets/
      └── profiles/
@@ -27,9 +28,9 @@ knzstb/
 | **Interactive Tree** | Clickable, high-contrast `streamlit-agraph` tree with circular portraits and bold `Name (Birthyear)` labels |
 | **Sidebar Profile** | Selecting a node updates the sidebar profile panel with portrait, generation, branch, birthdate, and parent |
 | **Login Gate** | App access is unlocked only after entering the configured username and password at launch |
-| **Image Handling** | Loads `assets/profiles/[Name].jpg` (or `.jpeg`/`.png`); falls back to a gray initials avatar |
+| **Image Handling** | Loads persisted portraits (prefers `.local_state/profiles/`, then `assets/profiles/[Name].jpg`/`.jpeg`/`.png`); falls back to a gray initials avatar |
 | **Dynamic Age** | Calculates current age from `Birthdate` using today’s date |
-| **Data Editor** | `st.data_editor` table — edit and save changes back to `family_data.csv`, set/save a Google Sheet URL, reload from it, and export the current CSV |
+| **Data Editor** | `st.data_editor` table — edit and save changes back to `family_data.csv` and `.local_state/family_data.csv`, set/save a Google Sheet URL, reload from it, and export the current CSV |
 | **Statistics** | Member counts per generation and per branch, with bar charts |
 | **Modern UI** | Custom CSS: light sidebar, high-contrast cards, rounded avatars, and dark readable text |
 
@@ -81,6 +82,10 @@ assets/profiles/Anna.png
 ```
 
 Any member without a photo will display a gray circular avatar with their initials automatically.
+
+Uploads done inside the app are automatically persisted to:
+- `.local_state/profiles/` (used first; protects against pull/merge overwrites)
+- `assets/profiles/` (repository-visible copy)
 
 ### 5 — Run the app
 
