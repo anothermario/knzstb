@@ -18,6 +18,7 @@ from urllib.error import URLError
 
 import pandas as pd
 import streamlit as st
+from streamlit.components.v1 import html as components_html
 try:
     from streamlit_agraph import Config, Edge, Node, agraph
 
@@ -223,6 +224,27 @@ st.markdown(
     .stTabs [aria-selected="true"] {
         background: #dbeafe !important;
         color: #000000 !important;
+    }
+    @media (max-width: 768px) {
+        .main .block-container {
+            padding-top: 1rem;
+            padding-left: 0.8rem;
+            padding-right: 0.8rem;
+            padding-bottom: 1.25rem;
+        }
+        .hero-card,
+        .tree-panel,
+        .profile-card {
+            border-radius: 18px;
+            padding: 1rem;
+        }
+        .profile-avatar {
+            width: 132px;
+            height: 132px;
+        }
+        .profile-grid {
+            grid-template-columns: 1fr;
+        }
     }
     </style>
     """,
@@ -687,6 +709,87 @@ def supports_kwarg(function: Any, kwarg_name: str) -> bool:
         return False
 
 
+def current_access_url() -> str:
+    context = getattr(st, "context", None)
+    if context is None:
+        return ""
+    try:
+        return safe_text(getattr(context, "url", ""), "")
+    except AttributeError:  # pragma: no cover - context support varies by runtime.
+        return ""
+
+
+def render_access_link_section(caption: str) -> None:
+    access_url = current_access_url()
+    if not access_url:
+        return
+
+    st.markdown("### 📱 Mobile access")
+    st.caption(caption)
+
+    if hasattr(st, "link_button"):
+        link_button_kwargs = (
+            {"use_container_width": True}
+            if supports_kwarg(st.link_button, "use_container_width")
+            else {}
+        )
+        st.link_button("🔗 Open current app link", access_url, **link_button_kwargs)
+
+    components_html(
+        f"""
+        <div style="font-family:Inter,Arial,sans-serif;border:1px solid #d1d5db;border-radius:16px;padding:0.9rem;background:#ffffff;">
+          <div style="font-size:0.85rem;font-weight:700;color:#4b5563;margin-bottom:0.45rem;">Current app link</div>
+          <input
+            type="text"
+            value={json.dumps(access_url)}
+            readonly
+            aria-label="Current app link"
+            style="width:100%;padding:0.7rem 0.85rem;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc;color:#0f172a;font-size:0.95rem;box-sizing:border-box;"
+          />
+          <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.75rem;">
+            <button id="copy-access-link" aria-label="Copy the current app link" style="flex:1 1 140px;border:none;border-radius:999px;padding:0.7rem 0.95rem;background:#111827;color:#ffffff;font-weight:700;cursor:pointer;">Copy link</button>
+            <button id="share-access-link" aria-label="Share the current app link" title="Share this link when your browser supports native sharing" style="flex:1 1 140px;border:none;border-radius:999px;padding:0.7rem 0.95rem;background:#dbeafe;color:#111827;font-weight:700;cursor:pointer;">Share link</button>
+          </div>
+          <div id="access-link-status" style="margin-top:0.65rem;font-size:0.82rem;color:#475569;"></div>
+        </div>
+        <script>
+          const accessUrl = {json.dumps(access_url)};
+          const status = document.getElementById("access-link-status");
+          const shareButton = document.getElementById("share-access-link");
+
+          document.getElementById("copy-access-link").addEventListener("click", async () => {{
+            try {{
+              await navigator.clipboard.writeText(accessUrl);
+              status.textContent = "Link copied.";
+            }} catch (error) {{
+              status.textContent = "Copy failed. Long-press the link field to copy it.";
+            }}
+          }});
+
+          if (navigator.share) {{
+            shareButton.addEventListener("click", async () => {{
+              try {{
+                await navigator.share({{ title: {json.dumps(APP_TITLE)}, url: accessUrl }});
+                status.textContent = "Share sheet opened.";
+              }} catch (error) {{
+                if (error?.name !== "AbortError") {{
+                  status.textContent = "Share failed. Use Copy link instead.";
+                }}
+              }}
+            }});
+          }} else {{
+            shareButton.disabled = true;
+            shareButton.setAttribute("aria-label", "Share is not supported in this browser");
+            shareButton.title = "Share is not supported in this browser";
+            shareButton.style.opacity = "0.55";
+            shareButton.style.cursor = "default";
+          }}
+        </script>
+        """,
+        height=190,
+    )
+
+
 def build_graph(df: pd.DataFrame) -> tuple[list[Node], list[Edge], Config, dict[str, str]]:
     nodes: list[Node] = []
     edges: list[Edge] = []
@@ -882,6 +985,9 @@ def render_sidebar(df: pd.DataFrame) -> None:
         st.caption(
             "The app reads and saves local edits in `family_data.csv` and builds the "
             "tree from each member's `Name` and `Parent` values."
+        )
+        render_access_link_section(
+            "Reopen the current app on your phone or share it with external users who already have the login details."
         )
 
 
@@ -1169,6 +1275,9 @@ def require_login() -> None:
         return
 
     st.markdown("## 🔐 Login")
+    render_access_link_section(
+        "Open or share this same app link on mobile for yourself or external users who already have the login information."
+    )
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
     if st.button("Login"):
