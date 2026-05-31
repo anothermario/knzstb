@@ -1275,9 +1275,6 @@ def require_login() -> None:
         return
 
     st.markdown("## 🔐 Login")
-    render_access_link_section(
-        "Open or share this same app link on mobile for yourself or external users who already have the login information."
-    )
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
     if st.button("Login"):
