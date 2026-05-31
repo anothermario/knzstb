@@ -715,7 +715,7 @@ def current_access_url() -> str:
         return ""
     try:
         return safe_text(getattr(context, "url", ""), "")
-    except Exception:  # pragma: no cover - context support varies by runtime.
+    except AttributeError:  # pragma: no cover - context support varies by runtime.
         return ""
 
 
@@ -747,8 +747,8 @@ def render_access_link_section(caption: str) -> None:
             style="width:100%;padding:0.7rem 0.85rem;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc;color:#0f172a;font-size:0.95rem;box-sizing:border-box;"
           />
           <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.75rem;">
-            <button id="copy-access-link" style="flex:1 1 140px;border:none;border-radius:999px;padding:0.7rem 0.95rem;background:#111827;color:#ffffff;font-weight:700;cursor:pointer;">Copy link</button>
-            <button id="share-access-link" title="Share this link when your browser supports native sharing" style="flex:1 1 140px;border:none;border-radius:999px;padding:0.7rem 0.95rem;background:#dbeafe;color:#111827;font-weight:700;cursor:pointer;">Share link</button>
+            <button id="copy-access-link" aria-label="Copy the current app link" style="flex:1 1 140px;border:none;border-radius:999px;padding:0.7rem 0.95rem;background:#111827;color:#ffffff;font-weight:700;cursor:pointer;">Copy link</button>
+            <button id="share-access-link" aria-label="Share the current app link" title="Share this link when your browser supports native sharing" style="flex:1 1 140px;border:none;border-radius:999px;padding:0.7rem 0.95rem;background:#dbeafe;color:#111827;font-weight:700;cursor:pointer;">Share link</button>
           </div>
           <div id="access-link-status" style="margin-top:0.65rem;font-size:0.82rem;color:#475569;"></div>
         </div>
@@ -786,7 +786,7 @@ def render_access_link_section(caption: str) -> None:
           }}
         </script>
         """,
-        height=170,
+        height=190,
     )
 
 
